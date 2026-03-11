@@ -1,0 +1,371 @@
+import AccessControl "authorization/access-control";
+import MixinAuthorization "authorization/MixinAuthorization";
+import MixinBlobStorage "blob-storage/Mixin";
+import Map "mo:core/Map";
+import Array "mo:core/Array";
+import Text "mo:core/Text";
+import Time "mo:core/Time";
+import Principal "mo:core/Principal";
+
+persistent actor {
+
+  let accessControlState : AccessControl.AccessControlState = AccessControl.initState();
+  include MixinAuthorization(accessControlState);
+  include MixinBlobStorage();
+
+  public type AccessLevel = { #Public; #Restricted; #Private };
+
+  // Internal stable type – matches Fas 1 exactly (no new fields to avoid migration errors)
+  type PostInternal = {
+    id : Nat;
+    title : Text;
+    content : Text;
+    authorAlias : Text;
+    authorPrincipal : Principal;
+    categoryId : Nat;
+    createdAt : Int;
+    status : { #Draft; #Published };
+  };
+
+  // Separate map for new Fas 2 image data (avoids stable variable migration issues)
+  type PostImages = {
+    coverImageKey : ?Text;
+    galleryImageKeys : [Text];
+  };
+
+  // Full return type exposed to frontend (combines internal + images + updatedAt)
+  public type Post = {
+    id : Nat;
+    title : Text;
+    content : Text;
+    authorAlias : Text;
+    authorPrincipal : Principal;
+    categoryId : Nat;
+    createdAt : Int;
+    updatedAt : Int;
+    status : { #Draft; #Published };
+    coverImageKey : ?Text;
+    galleryImageKeys : [Text];
+  };
+
+  public type Category = {
+    id : Nat;
+    name : Text;
+    description : Text;
+    accessLevel : AccessLevel;
+    readerList : [Principal];
+    createdBy : Principal;
+    createdAt : Int;
+    updatedAt : Int;
+  };
+
+  public type UserProfile = {
+    principalId : Principal;
+    alias : Text;
+    email : ?Text;
+    createdAt : Int;
+    updatedAt : Int;
+  };
+
+  public type ModerationLog = {
+    id : Nat;
+    action : Text;
+    admin : Principal;
+    targetUser : ?Principal;
+    contentType : Text;
+    snippet : Text;
+    reason : Text;
+    timestamp : Int;
+  };
+
+  // Stable variables – posts uses the ORIGINAL internal type (no migration needed)
+  var categories : [Category] = [];
+  var nextCategoryId : Nat = 1;
+  var posts : [PostInternal] = [];
+  var nextPostId : Nat = 1;
+  var userProfiles : Map.Map<Principal, UserProfile> = Map.empty<Principal, UserProfile>();
+  var moderationLogs : [ModerationLog] = [];
+  var nextLogId : Nat = 1;
+
+  // New Fas 2 stable vars – separate from posts to avoid migration
+  var postImages : Map.Map<Nat, PostImages> = Map.empty<Nat, PostImages>();
+  var postUpdatedAt : Map.Map<Nat, Int> = Map.empty<Nat, Int>();
+
+  let blockedWords : [Text] = [
+    "kuk", "fitta", "hora", "javla", "fan", "skit", "idiot", "knull", "helvete",
+    "fuck", "shit", "bitch", "cunt", "bastard", "dick", "pussy", "whore"
+  ];
+
+  func checkBlocked(text : Text) : ?Text {
+    let lower = text.toLower();
+    blockedWords.find(func(w) = lower.contains(#text w));
+  };
+
+  // Helper: enrich internal post with image data
+  func enrichPost(p : PostInternal) : Post {
+    let imgs : PostImages = switch (postImages.get(p.id)) {
+      case (?i) { i };
+      case (null) { { coverImageKey = null; galleryImageKeys = [] } };
+    };
+    let updatedAt : Int = switch (postUpdatedAt.get(p.id)) {
+      case (?t) { t };
+      case (null) { p.createdAt };
+    };
+    {
+      id = p.id;
+      title = p.title;
+      content = p.content;
+      authorAlias = p.authorAlias;
+      authorPrincipal = p.authorPrincipal;
+      categoryId = p.categoryId;
+      createdAt = p.createdAt;
+      updatedAt;
+      status = p.status;
+      coverImageKey = imgs.coverImageKey;
+      galleryImageKeys = imgs.galleryImageKeys;
+    };
+  };
+
+  // ── Categories ───────────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func createCategory(name : Text, description : Text, accessLevel : AccessLevel) : async Nat {
+    let id = nextCategoryId;
+    nextCategoryId += 1;
+    categories := categories.concat([{
+      id; name; description; accessLevel;
+      readerList = [caller];
+      createdBy = caller;
+      createdAt = Time.now();
+      updatedAt = Time.now();
+    }]);
+    id;
+  };
+
+  public shared (_) func updateCategory(id : Nat, name : Text, description : Text, accessLevel : AccessLevel) : async Bool {
+    switch (categories.findIndex(func(c : Category) : Bool = c.id == id)) {
+      case (null) { false };
+      case (?i) {
+        let old = categories[i];
+        categories := Array.tabulate<Category>(categories.size(), func(j) {
+          if (j == i) { { id = old.id; name; description; accessLevel;
+            readerList = old.readerList; createdBy = old.createdBy;
+            createdAt = old.createdAt; updatedAt = Time.now() } }
+          else { categories[j] };
+        });
+        true;
+      };
+    };
+  };
+
+  public shared (_) func addReaderToCategory(categoryId : Nat, reader : Principal) : async Bool {
+    switch (categories.findIndex(func(c : Category) : Bool = c.id == categoryId)) {
+      case (null) { false };
+      case (?i) {
+        let old = categories[i];
+        if (old.readerList.find(func(p : Principal) : Bool = Principal.equal(p, reader)) != null) { return true };
+        categories := Array.tabulate<Category>(categories.size(), func(j) {
+          if (j == i) { { id = old.id; name = old.name; description = old.description;
+            accessLevel = old.accessLevel;
+            readerList = old.readerList.concat([reader]);
+            createdBy = old.createdBy; createdAt = old.createdAt; updatedAt = Time.now() } }
+          else { categories[j] };
+        });
+        true;
+      };
+    };
+  };
+
+  public query func getCategories() : async [Category] { categories };
+
+  public query func getCategoryById(id : Nat) : async ?Category {
+    categories.find(func(c : Category) : Bool = c.id == id);
+  };
+
+  // ── Posts ────────────────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func createPost(title : Text, content : Text, categoryId : Nat) : async { #ok : Nat; #err : Text } {
+    switch (checkBlocked(title # " " # content)) {
+      case (?word) {
+        moderationLogs := moderationLogs.concat([{
+          id = nextLogId; action = "block"; admin = caller; targetUser = ?caller;
+          contentType = "post"; snippet = title;
+          reason = "Blocked word: " # word; timestamp = Time.now();
+        }]);
+        nextLogId += 1;
+        return #err("Innehallet innehaller otillatna ord.");
+      };
+      case (null) {};
+    };
+    let alias = switch (userProfiles.get(caller)) {
+      case (?p) { p.alias };
+      case (null) { "Anonym" };
+    };
+    let now = Time.now();
+    let id = nextPostId;
+    nextPostId += 1;
+    posts := posts.concat([{
+      id; title; content; authorAlias = alias; authorPrincipal = caller;
+      categoryId; createdAt = now; status = #Draft;
+    }]);
+    postUpdatedAt.add(id, now);
+    postImages.add(id, { coverImageKey = null; galleryImageKeys = [] });
+    #ok id;
+  };
+
+  public shared ({ caller }) func updatePost(postId : Nat, title : Text, content : Text, categoryId : Nat) : async { #ok : Bool; #err : Text } {
+    switch (checkBlocked(title # " " # content)) {
+      case (?word) { return #err("Innehallet innehaller otillatna ord.") };
+      case (null) {};
+    };
+    switch (posts.findIndex(func(p : PostInternal) : Bool = p.id == postId)) {
+      case (null) { #err("Inlägget hittades inte.") };
+      case (?i) {
+        let old = posts[i];
+        if (not Principal.equal(old.authorPrincipal, caller) and not AccessControl.isAdmin(accessControlState, caller)) {
+          return #err("Inte behörig.");
+        };
+        let now = Time.now();
+        posts := Array.tabulate<PostInternal>(posts.size(), func(j) {
+          if (j == i) { { id = old.id; title; content; authorAlias = old.authorAlias;
+            authorPrincipal = old.authorPrincipal; categoryId; createdAt = old.createdAt;
+            status = old.status } }
+          else { posts[j] };
+        });
+        postUpdatedAt.add(postId, now);
+        #ok true;
+      };
+    };
+  };
+
+  public shared ({ caller }) func updatePostImages(postId : Nat, coverImageKey : ?Text, galleryImageKeys : [Text]) : async Bool {
+    switch (posts.find(func(p : PostInternal) : Bool = p.id == postId)) {
+      case (null) { false };
+      case (?p) {
+        if (not Principal.equal(p.authorPrincipal, caller) and not AccessControl.isAdmin(accessControlState, caller)) {
+          return false;
+        };
+        postImages.add(postId, { coverImageKey; galleryImageKeys });
+        true;
+      };
+    };
+  };
+
+  public shared ({ caller }) func deletePost(postId : Nat) : async Bool {
+    switch (posts.find(func(p : PostInternal) : Bool = p.id == postId)) {
+      case (null) { false };
+      case (?p) {
+        if (not Principal.equal(p.authorPrincipal, caller) and not AccessControl.isAdmin(accessControlState, caller)) {
+          return false;
+        };
+        posts := posts.filter(func(q : PostInternal) : Bool = q.id != postId);
+        postImages.remove(postId);
+        postUpdatedAt.remove(postId);
+        true;
+      };
+    };
+  };
+
+  public shared ({ caller }) func publishPost(postId : Nat) : async Bool {
+    switch (posts.findIndex(func(p : PostInternal) : Bool = p.id == postId)) {
+      case (null) { false };
+      case (?i) {
+        let old = posts[i];
+        if (not Principal.equal(old.authorPrincipal, caller) and not AccessControl.isAdmin(accessControlState, caller)) { return false };
+        posts := Array.tabulate<PostInternal>(posts.size(), func(j) {
+          if (j == i) { { id = old.id; title = old.title; content = old.content;
+            authorAlias = old.authorAlias; authorPrincipal = old.authorPrincipal;
+            categoryId = old.categoryId; createdAt = old.createdAt; status = #Published } }
+          else { posts[j] };
+        });
+        postUpdatedAt.add(postId, Time.now());
+        true;
+      };
+    };
+  };
+
+  public query func getPublishedPosts() : async [Post] {
+    posts
+      .filter(func(p : PostInternal) : Bool = p.status == #Published)
+      .map(enrichPost);
+  };
+
+  public query func getPostById(id : Nat) : async ?Post {
+    switch (posts.find(func(p : PostInternal) : Bool = p.id == id)) {
+      case (null) { null };
+      case (?p) { ?enrichPost(p) };
+    };
+  };
+
+  public query ({ caller }) func getPostsByAuthor() : async [Post] {
+    posts
+      .filter(func(p : PostInternal) : Bool = Principal.equal(p.authorPrincipal, caller))
+      .map(enrichPost);
+  };
+
+  public query ({ caller }) func getPostsForUser() : async [Post] {
+    posts.filter(func(p : PostInternal) : Bool {
+      if (p.status != #Published) { return false };
+      switch (categories.find(func(c : Category) : Bool = c.id == p.categoryId)) {
+        case (null) { false };
+        case (?cat) {
+          switch (cat.accessLevel) {
+            case (#Public) { true };
+            case (#Restricted) { cat.readerList.find(func(r : Principal) : Bool = Principal.equal(r, caller)) != null };
+            case (#Private) { AccessControl.isAdmin(accessControlState, caller) };
+          };
+        };
+      };
+    }).map(enrichPost);
+  };
+
+  // ── User profiles ─────────────────────────────────────────────────────────────
+
+  public query func getUserProfile(principalId : Principal) : async ?UserProfile {
+    userProfiles.get(principalId);
+  };
+
+  public shared ({ caller }) func setAlias(alias : Text) : async Bool {
+    if (caller.isAnonymous()) { return false };
+    let now = Time.now();
+    let profile : UserProfile = switch (userProfiles.get(caller)) {
+      case (?p) { { principalId = p.principalId; alias; email = p.email; createdAt = p.createdAt; updatedAt = now } };
+      case (null) { { principalId = caller; alias; email = null; createdAt = now; updatedAt = now } };
+    };
+    userProfiles.add(caller, profile);
+    true;
+  };
+
+  public shared ({ caller }) func updateUserAliasAdmin(targetPrincipal : Principal, newAlias : Text) : async Bool {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
+    let now = Time.now();
+    let profile : UserProfile = switch (userProfiles.get(targetPrincipal)) {
+      case (?p) { { principalId = p.principalId; alias = newAlias; email = p.email; createdAt = p.createdAt; updatedAt = now } };
+      case (null) { { principalId = targetPrincipal; alias = newAlias; email = null; createdAt = now; updatedAt = now } };
+    };
+    userProfiles.add(targetPrincipal, profile);
+    moderationLogs := moderationLogs.concat([{
+      id = nextLogId; action = "alias_update"; admin = caller; targetUser = ?targetPrincipal;
+      contentType = "user"; snippet = newAlias; reason = "Admin alias update"; timestamp = now;
+    }]);
+    nextLogId += 1;
+    true;
+  };
+
+  public query ({ caller }) func getAllUsers() : async [UserProfile] {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return [] };
+    var result : [UserProfile] = [];
+    for ((_, profile) in userProfiles.entries()) {
+      result := result.concat([profile]);
+    };
+    result;
+  };
+
+  public query ({ caller }) func getModerationLogs() : async [ModerationLog] {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return [] };
+    moderationLogs;
+  };
+
+  public query func containsBlockedContent(text : Text) : async ?Text {
+    checkBlocked(text);
+  };
+};

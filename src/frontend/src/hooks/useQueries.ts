@@ -1,6 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Category, Post } from "../backend.d";
+import { useEffect } from "react";
+import type { AccessLevel, Category, Post } from "../backend.d";
 import { useActor } from "./useActor";
+
+export function useInitDefaultCategories() {
+  const { actor, isFetching } = useActor();
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!actor || isFetching) return;
+    actor
+      .initDefaultCategories()
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ["categories"] });
+      })
+      .catch(() => {
+        /* ignore */
+      });
+  }, [actor, isFetching, qc]);
+}
 
 export function usePublishedPosts() {
   const { actor, isFetching } = useActor();
@@ -23,6 +40,28 @@ export function useCategories() {
       return actor.getCategories() as Promise<Category[]>;
     },
     enabled: !!actor && !isFetching,
+  });
+}
+
+export function useCreateCategory() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      name,
+      description,
+      accessLevel,
+    }: {
+      name: string;
+      description: string;
+      accessLevel: AccessLevel;
+    }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.createCategory(name, description, accessLevel);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categories"] });
+    },
   });
 }
 

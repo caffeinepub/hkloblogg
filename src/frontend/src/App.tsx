@@ -21,19 +21,59 @@ import {
   Search,
   Settings,
   User,
-  Users,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import React, { useState } from "react";
 import type { Post } from "./backend.d";
 import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
-import { useCategories, usePublishedPosts } from "./hooks/useQueries";
+import {
+  useCategories,
+  useInitDefaultCategories,
+  usePublishedPosts,
+} from "./hooks/useQueries";
 import MyPosts from "./pages/MyPosts";
 import PostEditor from "./pages/PostEditor";
 import PostView from "./pages/PostView";
 import type { AppView, NavigateFn } from "./types";
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-background p-8">
+          <div className="max-w-md text-center space-y-4">
+            <h1 className="text-2xl font-bold text-foreground">
+              Något gick fel
+            </h1>
+            <p className="text-muted-foreground text-sm font-mono bg-muted p-3 rounded text-left whitespace-pre-wrap">
+              {this.state.error?.message}
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm"
+            >
+              Ladda om sidan
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function formatDate(timestamp: bigint): string {
   const ms = Number(timestamp) / 1_000_000;
@@ -114,8 +154,8 @@ function HomePage({
 }: {
   onNavigate: NavigateFn;
 }) {
-  const { isInitializing } = useInternetIdentity();
-  const { login, loginStatus, identity } = useInternetIdentity();
+  const { isInitializing, login, loginStatus, identity } =
+    useInternetIdentity();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
 
@@ -331,7 +371,10 @@ function HomePage({
   );
 }
 
-export default function App() {
+function AppInner() {
+  // Fire-and-forget: seed default categories once actor is ready
+  useInitDefaultCategories();
+
   const { login, clear, loginStatus, identity, isInitializing } =
     useInternetIdentity();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -377,13 +420,6 @@ export default function App() {
   ];
 
   const visibleLinks = navLinks.filter((l) => !l.authOnly || isLoggedIn);
-
-  // Redirect to home if not logged in and trying to access protected views
-  const needsAuth =
-    view.type === "create" || view.type === "edit" || view.type === "my-posts";
-  if (needsAuth && !isLoggedIn && !isInitializing) {
-    // Safe to show home
-  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -528,7 +564,7 @@ export default function App() {
         </AnimatePresence>
       </header>
 
-      {/* Main content — route based on view */}
+      {/* Main content */}
       <AnimatePresence mode="wait">
         {view.type === "home" && <HomePage key="home" onNavigate={navigate} />}
         {(view.type === "create" || view.type === "edit") && (
@@ -570,5 +606,13 @@ export default function App() {
         </div>
       </footer>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
   );
 }

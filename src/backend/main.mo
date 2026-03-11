@@ -15,7 +15,6 @@ persistent actor {
 
   public type AccessLevel = { #Public; #Restricted; #Private };
 
-  // Internal stable type – matches Fas 1 exactly (no new fields to avoid migration errors)
   type PostInternal = {
     id : Nat;
     title : Text;
@@ -27,13 +26,11 @@ persistent actor {
     status : { #Draft; #Published };
   };
 
-  // Separate map for new Fas 2 image data (avoids stable variable migration issues)
   type PostImages = {
     coverImageKey : ?Text;
     galleryImageKeys : [Text];
   };
 
-  // Full return type exposed to frontend (combines internal + images + updatedAt)
   public type Post = {
     id : Nat;
     title : Text;
@@ -78,7 +75,6 @@ persistent actor {
     timestamp : Int;
   };
 
-  // Stable variables – posts uses the ORIGINAL internal type (no migration needed)
   var categories : [Category] = [];
   var nextCategoryId : Nat = 1;
   var posts : [PostInternal] = [];
@@ -87,7 +83,6 @@ persistent actor {
   var moderationLogs : [ModerationLog] = [];
   var nextLogId : Nat = 1;
 
-  // New Fas 2 stable vars – separate from posts to avoid migration
   var postImages : Map.Map<Nat, PostImages> = Map.empty<Nat, PostImages>();
   var postUpdatedAt : Map.Map<Nat, Int> = Map.empty<Nat, Int>();
 
@@ -101,7 +96,6 @@ persistent actor {
     blockedWords.find(func(w) = lower.contains(#text w));
   };
 
-  // Helper: enrich internal post with image data
   func enrichPost(p : PostInternal) : Post {
     let imgs : PostImages = switch (postImages.get(p.id)) {
       case (?i) { i };
@@ -123,6 +117,34 @@ persistent actor {
       status = p.status;
       coverImageKey = imgs.coverImageKey;
       galleryImageKeys = imgs.galleryImageKeys;
+    };
+  };
+
+  // ── Default category seed ─────────────────────────────────────────────────────
+
+  // Seeds the 5 default categories if none exist yet.
+  // Safe to call multiple times – only runs when categories list is empty.
+  public shared (_) func initDefaultCategories() : async () {
+    if (categories.size() > 0) { return };
+    let now = Time.now();
+    let seedCreator = Principal.fromText("aaaaa-aa");
+    let defaults : [(Text, Text, AccessLevel)] = [
+      ("Offentligt", "Synlig för alla",          #Public),
+      ("Vänner",     "Synlig för vänner",        #Restricted),
+      ("Familj",     "Privat för familjen",      #Private),
+      ("Arbete",     "Arbetsrelaterade inlägg",  #Restricted),
+      ("Teknik",     "Tech och programmering",   #Public),
+    ];
+    for ((name, description, accessLevel) in defaults.vals()) {
+      let id = nextCategoryId;
+      nextCategoryId += 1;
+      categories := categories.concat([{
+        id; name; description; accessLevel;
+        readerList = [];
+        createdBy = seedCreator;
+        createdAt = now;
+        updatedAt = now;
+      }]);
     };
   };
 

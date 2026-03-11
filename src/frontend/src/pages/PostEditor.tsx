@@ -1,35 +1,57 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Bold,
+  ChevronDown,
   ChevronLeft,
+  Globe,
   Heading2,
   Heading3,
   ImagePlus,
   Italic,
   List,
   Loader2,
+  Lock,
+  Plus,
   Save,
   Send,
   Trash2,
+  Users,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { AccessLevel, Category } from "../backend.d";
 import {
   useCategories,
+  useCreateCategory,
   useCreatePost,
   usePostById,
   usePublishPost,
@@ -69,6 +91,348 @@ const TOOLBAR_BUTTONS = [
   { cmd: "insertUnorderedList", icon: List, label: "Punktlista" },
 ];
 
+function accessLevelIcon(level: AccessLevel) {
+  if ("Public" in level) return Globe;
+  if ("Restricted" in level) return Users;
+  return Lock;
+}
+
+function accessLevelBadge(level: AccessLevel) {
+  if ("Public" in level)
+    return (
+      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-body">
+        Offentligt
+      </Badge>
+    );
+  if ("Restricted" in level)
+    return (
+      <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-body">
+        Begränsad
+      </Badge>
+    );
+  return (
+    <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-xs font-body">
+      Privat
+    </Badge>
+  );
+}
+
+// ─── Visibility chip ─────────────────────────────────────────────────────────
+function VisibilityChip({ category }: { category: Category | undefined }) {
+  if (!category) return null;
+  const level = category.accessLevel;
+  const Icon = accessLevelIcon(level);
+
+  let text: string;
+  let colorClass: string;
+  if ("Public" in level) {
+    text = "Synlig för alla";
+    colorClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
+  } else if ("Restricted" in level) {
+    const count = category.readerList.length;
+    text = `Synlig för utvalda i ${category.name}${count > 0 ? ` (${count} personer)` : ""}`;
+    colorClass = "bg-amber-50 text-amber-700 border-amber-200";
+  } else {
+    text = "Endast du och administratörer";
+    colorClass = "bg-rose-50 text-rose-700 border-rose-200";
+  }
+
+  return (
+    <div
+      data-ocid="editor.visibility.panel"
+      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-body border ${colorClass}`}
+    >
+      <Icon className="w-3 h-3" />
+      {text}
+    </div>
+  );
+}
+
+// ─── Create Category Dialog ───────────────────────────────────────────────────
+function CreateCategoryDialog({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (id: bigint) => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [accessLevel, setAccessLevel] = useState<
+    "Public" | "Restricted" | "Private"
+  >("Public");
+  const createCategory = useCreateCategory();
+
+  const handleSubmit = async () => {
+    if (!name.trim()) {
+      toast.error("Ange ett namn för kategorin");
+      return;
+    }
+    const level: AccessLevel =
+      accessLevel === "Public"
+        ? { Public: null }
+        : accessLevel === "Restricted"
+          ? { Restricted: null }
+          : { Private: null };
+    try {
+      const id = await createCategory.mutateAsync({
+        name: name.trim(),
+        description: description.trim(),
+        accessLevel: level,
+      });
+      toast.success("Kategori skapad!");
+      onCreated(id);
+      setName("");
+      setDescription("");
+      setAccessLevel("Public");
+      onClose();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Något gick fel");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent
+        data-ocid="editor.create_category.dialog"
+        className="sm:max-w-md"
+      >
+        <DialogHeader>
+          <DialogTitle className="font-display">Skapa ny kategori</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="cat-name" className="font-body font-semibold">
+              Namn <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="cat-name"
+              data-ocid="editor.category_name.input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="T.ex. Familj, Arbete…"
+              className="font-body"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cat-desc" className="font-body font-semibold">
+              Beskrivning
+            </Label>
+            <Input
+              id="cat-desc"
+              data-ocid="editor.category_description.input"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Kort beskrivning…"
+              className="font-body"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="font-body font-semibold">Åtkomstnivå</Label>
+            <RadioGroup
+              data-ocid="editor.access_level.select"
+              value={accessLevel}
+              onValueChange={(v) =>
+                setAccessLevel(v as "Public" | "Restricted" | "Private")
+              }
+              className="space-y-2"
+            >
+              <label
+                htmlFor="al-public"
+                className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/40 cursor-pointer transition-colors"
+              >
+                <RadioGroupItem
+                  value="Public"
+                  id="al-public"
+                  className="mt-0.5"
+                />
+                <div>
+                  <div className="flex items-center gap-1.5 font-body font-semibold text-sm">
+                    <Globe className="w-3.5 h-3.5 text-emerald-600" />
+                    Offentligt
+                  </div>
+                  <p className="text-xs text-muted-foreground font-body">
+                    Synlig för alla besökare
+                  </p>
+                </div>
+              </label>
+              <label
+                htmlFor="al-restricted"
+                className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/40 cursor-pointer transition-colors"
+              >
+                <RadioGroupItem
+                  value="Restricted"
+                  id="al-restricted"
+                  className="mt-0.5"
+                />
+                <div>
+                  <div className="flex items-center gap-1.5 font-body font-semibold text-sm">
+                    <Users className="w-3.5 h-3.5 text-amber-600" />
+                    Begränsad
+                  </div>
+                  <p className="text-xs text-muted-foreground font-body">
+                    Synlig för utvalda användare
+                  </p>
+                </div>
+              </label>
+              <label
+                htmlFor="al-private"
+                className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/40 cursor-pointer transition-colors"
+              >
+                <RadioGroupItem
+                  value="Private"
+                  id="al-private"
+                  className="mt-0.5"
+                />
+                <div>
+                  <div className="flex items-center gap-1.5 font-body font-semibold text-sm">
+                    <Lock className="w-3.5 h-3.5 text-rose-600" />
+                    Privat
+                  </div>
+                  <p className="text-xs text-muted-foreground font-body">
+                    Bara du och administratörer
+                  </p>
+                </div>
+              </label>
+            </RadioGroup>
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button
+            data-ocid="editor.create_category.cancel_button"
+            variant="outline"
+            onClick={onClose}
+            className="font-body"
+          >
+            Avbryt
+          </Button>
+          <Button
+            data-ocid="editor.create_category.submit_button"
+            onClick={handleSubmit}
+            disabled={createCategory.isPending}
+            className="bg-primary text-primary-foreground font-body"
+          >
+            {createCategory.isPending && (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            )}
+            Skapa kategori
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Category Combobox ────────────────────────────────────────────────────────
+function CategoryCombobox({
+  categories,
+  value,
+  onChange,
+}: {
+  categories: Category[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const selected = categories.find((c) => String(c.id) === value);
+  const Icon = selected ? accessLevelIcon(selected.accessLevel) : Globe;
+
+  return (
+    <>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            data-ocid="editor.category.select"
+            className="flex items-center justify-between gap-2 w-full sm:w-72 px-3 py-2 h-10 rounded-lg border border-input bg-card text-sm font-body hover:bg-accent/40 transition-colors text-left"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
+              <span className="truncate">
+                {selected ? selected.name : "Välj kategori…"}
+              </span>
+            </span>
+            <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          data-ocid="editor.category.popover"
+          className="w-80 p-0"
+          align="start"
+        >
+          <Command>
+            <CommandInput placeholder="Sök kategori…" className="font-body" />
+            <CommandList>
+              <CommandEmpty className="py-4 text-center text-sm font-body text-muted-foreground">
+                Inga kategorier hittades.
+              </CommandEmpty>
+              <CommandGroup>
+                {categories.map((cat) => {
+                  const CatIcon = accessLevelIcon(cat.accessLevel);
+                  return (
+                    <CommandItem
+                      key={String(cat.id)}
+                      value={cat.name}
+                      onSelect={() => {
+                        onChange(String(cat.id));
+                        setOpen(false);
+                      }}
+                      className="flex items-start gap-3 px-3 py-2.5 cursor-pointer"
+                    >
+                      <CatIcon className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-body font-semibold text-sm">
+                            {cat.name}
+                          </span>
+                          {accessLevelBadge(cat.accessLevel)}
+                        </div>
+                        {cat.description && (
+                          <p className="text-xs text-muted-foreground font-body mt-0.5 truncate">
+                            {cat.description}
+                          </p>
+                        )}
+                      </div>
+                      {String(cat.id) === value && (
+                        <span className="text-primary text-xs">✓</span>
+                      )}
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+              <CommandSeparator />
+              <CommandGroup>
+                <CommandItem
+                  data-ocid="editor.create_category.open_modal_button"
+                  onSelect={() => {
+                    setOpen(false);
+                    setDialogOpen(true);
+                  }}
+                  className="flex items-center gap-2 px-3 py-2.5 cursor-pointer text-primary font-body font-semibold"
+                >
+                  <Plus className="w-4 h-4" />
+                  Skapa ny kategori
+                </CommandItem>
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+
+      <CreateCategoryDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onCreated={(id) => onChange(String(id))}
+      />
+    </>
+  );
+}
+
+// ─── Main PostEditor ──────────────────────────────────────────────────────────
 export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
   const isEditing = postId !== undefined;
   const { data: existingPost, isLoading: postLoading } = usePostById(
@@ -98,6 +462,14 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
 
   const [initialized, setInitialized] = useState(false);
 
+  // Auto-select default category ("Offentligt" or first)
+  useEffect(() => {
+    if (categoryId || categories.length === 0 || isEditing) return;
+    const defaultCat =
+      categories.find((c) => c.name === "Offentligt") ?? categories[0];
+    if (defaultCat) setCategoryId(String(defaultCat.id));
+  }, [categories, categoryId, isEditing]);
+
   // Populate fields when editing
   useEffect(() => {
     if (!isEditing || !existingPost || initialized) return;
@@ -106,7 +478,6 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
     if (editorRef.current) {
       editorRef.current.innerHTML = existingPost.content;
     }
-    // Load existing images
     const loadImages = async () => {
       if (existingPost.coverImageKey.length > 0) {
         try {
@@ -134,6 +505,8 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
     loadImages();
     setInitialized(true);
   }, [existingPost, isEditing, initialized, getImageUrl]);
+
+  const selectedCategory = categories.find((c) => String(c.id) === categoryId);
 
   const execCmd = (cmd: string, value?: string) => {
     editorRef.current?.focus();
@@ -169,7 +542,6 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
     coverKey: [] | [string];
     galleryKeys: string[];
   }> => {
-    // Upload cover if new file
     let coverKey: [] | [string] = cover?.hash ? [cover.hash] : [];
     if (cover?.file) {
       setCover((c) => (c ? { ...c, uploading: true, uploadProgress: 0 } : c));
@@ -182,7 +554,6 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
       coverKey = [hash];
     }
 
-    // Upload gallery items with new files
     const galleryKeys: string[] = [];
     const updated = await Promise.all(
       gallery.map(async (item, idx) => {
@@ -369,31 +740,21 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
         <div className="space-y-2">
           <Label className="font-body font-semibold">Kategori</Label>
           {catLoading ? (
-            <Skeleton className="h-10 w-48" />
+            <Skeleton className="h-10 w-72" />
           ) : (
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger
-                data-ocid="editor.select"
-                className="w-full sm:w-64 font-body bg-card"
-              >
-                <SelectValue placeholder="Välj kategori…" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((cat) => (
-                  <SelectItem key={String(cat.id)} value={String(cat.id)}>
-                    {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <CategoryCombobox
+              categories={categories}
+              value={categoryId}
+              onChange={setCategoryId}
+            />
           )}
+          {selectedCategory && <VisibilityChip category={selectedCategory} />}
         </div>
 
         {/* Rich Text Editor */}
         <div className="space-y-2">
           <Label className="font-body font-semibold">Innehåll</Label>
           <div className="border border-border rounded-xl overflow-hidden bg-card">
-            {/* Toolbar */}
             <div className="flex items-center gap-1 p-2 border-b border-border bg-muted/50">
               {TOOLBAR_BUTTONS.map((btn) => (
                 <button
@@ -411,7 +772,6 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
                 </button>
               ))}
             </div>
-            {/* Editable area */}
             <div
               ref={editorRef}
               data-ocid="editor.editor"

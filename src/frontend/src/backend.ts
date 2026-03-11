@@ -57,7 +57,10 @@ const idlFactory = ({ IDL }: any) => {
     authorPrincipal: IDL.Principal,
     categoryId: IDL.Nat,
     createdAt: IDL.Int,
+    updatedAt: IDL.Int,
     status: PostStatus,
+    coverImageKey: IDL.Opt(IDL.Text),
+    galleryImageKeys: IDL.Vec(IDL.Text),
   });
   const UserProfile = IDL.Record({
     principalId: IDL.Principal,
@@ -77,17 +80,23 @@ const idlFactory = ({ IDL }: any) => {
     timestamp: IDL.Int,
   });
   const CreatePostResult = IDL.Variant({ ok: IDL.Nat, err: IDL.Text });
+  const UpdatePostResult = IDL.Variant({ ok: IDL.Bool, err: IDL.Text });
 
   return IDL.Service({
+    initDefaultCategories: IDL.Func([], [], []),
     createCategory: IDL.Func([IDL.Text, IDL.Text, AccessLevel], [IDL.Nat], []),
     updateCategory: IDL.Func([IDL.Nat, IDL.Text, IDL.Text, AccessLevel], [IDL.Bool], []),
     addReaderToCategory: IDL.Func([IDL.Nat, IDL.Principal], [IDL.Bool], []),
     getCategories: IDL.Func([], [IDL.Vec(Category)], ["query"]),
     getCategoryById: IDL.Func([IDL.Nat], [IDL.Opt(Category)], ["query"]),
     createPost: IDL.Func([IDL.Text, IDL.Text, IDL.Nat], [CreatePostResult], []),
+    updatePost: IDL.Func([IDL.Nat, IDL.Text, IDL.Text, IDL.Nat], [UpdatePostResult], []),
+    updatePostImages: IDL.Func([IDL.Nat, IDL.Opt(IDL.Text), IDL.Vec(IDL.Text)], [IDL.Bool], []),
+    deletePost: IDL.Func([IDL.Nat], [IDL.Bool], []),
     publishPost: IDL.Func([IDL.Nat], [IDL.Bool], []),
     getPublishedPosts: IDL.Func([], [IDL.Vec(Post)], ["query"]),
     getPostById: IDL.Func([IDL.Nat], [IDL.Opt(Post)], ["query"]),
+    getPostsByAuthor: IDL.Func([], [IDL.Vec(Post)], ["query"]),
     getPostsForUser: IDL.Func([], [IDL.Vec(Post)], ["query"]),
     getUserProfile: IDL.Func([IDL.Principal], [IDL.Opt(UserProfile)], ["query"]),
     setAlias: IDL.Func([IDL.Text], [IDL.Bool], []),

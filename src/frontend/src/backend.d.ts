@@ -14,7 +14,6 @@ export interface Category {
   updatedAt: bigint;
 }
 
-// Post includes all Fas 2 fields (backend enriches from separate maps)
 export interface Post {
   id: bigint;
   title: string;
@@ -49,6 +48,7 @@ export interface ModerationLog {
 }
 
 export interface backendInterface {
+  initDefaultCategories: ActorMethod<[], undefined>;
   createCategory: ActorMethod<[string, string, AccessLevel], bigint>;
   updateCategory: ActorMethod<[bigint, string, string, AccessLevel], boolean>;
   addReaderToCategory: ActorMethod<[bigint, Principal], boolean>;

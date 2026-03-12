@@ -150,7 +150,7 @@ export default function UserProfile({
       <button
         type="button"
         data-ocid="profile.back.button"
-        onClick={() => onNavigate({ type: "discover" })}
+        onClick={() => onNavigate({ type: "home" })}
         className="flex items-center gap-1.5 text-sm font-body text-muted-foreground hover:text-foreground transition-colors mb-8"
       >
         <ArrowLeft className="w-4 h-4" />

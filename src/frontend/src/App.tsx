@@ -23,7 +23,6 @@ import {
   Calendar,
   Check,
   ClipboardCopy,
-  Globe,
   Home,
   Loader2,
   LogOut,
@@ -52,12 +51,14 @@ import {
   useUserProfile,
 } from "./hooks/useQueries";
 import AdminPanel from "./pages/AdminPanel";
-import Discover from "./pages/Discover";
 import MyPosts from "./pages/MyPosts";
 import PostEditor from "./pages/PostEditor";
 import PostView from "./pages/PostView";
 import UserProfile from "./pages/UserProfile";
 import type { AppView, NavigateFn } from "./types";
+
+// Suppress unused import lint warning for Bell (used in NotificationBell)
+void Bell;
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -364,6 +365,11 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
   const isLoggingIn = loginStatus === "logging-in";
 
   const filteredPosts = posts.filter((p) => {
+    const category = categories.find(
+      (c) => String(c.id) === String(p.categoryId),
+    );
+    // Exclude posts in non-public categories (Restricted / Private)
+    if (!category || !("Public" in category.accessLevel)) return false;
     const matchQuery = searchQuery
       ? p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.content.toLowerCase().includes(searchQuery.toLowerCase())
@@ -417,16 +423,6 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
                   {isLoggingIn ? "Loggar in…" : "Logga in för att skriva"}
                 </Button>
               )}
-              <Button
-                data-ocid="hero.discover.button"
-                size="lg"
-                variant="outline"
-                onClick={() => onNavigate({ type: "discover" })}
-                className="font-body border-foreground/20 hover:bg-accent/50"
-              >
-                <Globe className="w-5 h-5 mr-2" />
-                Utforska berättelser
-              </Button>
             </div>
           </motion.div>
         </div>
@@ -443,9 +439,9 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
             <h2 className="font-display text-2xl font-bold text-foreground tracking-wide uppercase">
               Senaste berättelserna
             </h2>
-            {posts.length > 0 && (
+            {filteredPosts.length > 0 && (
               <Badge variant="secondary" className="font-body">
-                {posts.length} inlägg
+                {filteredPosts.length} inlägg
               </Badge>
             )}
           </div>
@@ -701,7 +697,7 @@ function AppInner() {
   const { login, clear, loginStatus, identity, isInitializing } =
     useInternetIdentity();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [view, setView] = useState<AppView>({ type: "discover" });
+  const [view, setView] = useState<AppView>({ type: "home" });
 
   const navigate: NavigateFn = (v) => {
     setView(v);
@@ -719,13 +715,7 @@ function AppInner() {
       icon: Home,
       ocid: "nav.home.link",
       view: { type: "home" } as AppView,
-      authOnly: true,
-    },
-    {
-      label: "Upptäck",
-      icon: Globe,
-      ocid: "nav.discover.link",
-      view: { type: "discover" } as AppView,
+      authOnly: false,
     },
     {
       label: "Skapa inlägg",
@@ -763,9 +753,7 @@ function AppInner() {
           <button
             type="button"
             data-ocid="nav.home.link"
-            onClick={() =>
-              navigate(isLoggedIn ? { type: "home" } : { type: "discover" })
-            }
+            onClick={() => navigate({ type: "home" })}
             className="hklo-logo text-2xl shrink-0 cursor-pointer"
           >
             HKLO
@@ -809,7 +797,7 @@ function AppInner() {
                   size="sm"
                   onClick={() => {
                     clear();
-                    navigate({ type: "discover" });
+                    navigate({ type: "home" });
                   }}
                   className="hidden sm:flex items-center gap-1.5 text-sm"
                 >
@@ -889,7 +877,7 @@ function AppInner() {
                     className="flex items-center gap-2.5 px-3 py-2.5 text-sm font-body text-foreground/70 hover:text-foreground hover:bg-accent/50 rounded-lg transition-colors text-left"
                     onClick={() => {
                       clear();
-                      navigate({ type: "discover" });
+                      navigate({ type: "home" });
                     }}
                   >
                     <LogOut className="w-4 h-4" />
@@ -905,11 +893,6 @@ function AppInner() {
       {/* Main content */}
       <AnimatePresence mode="wait">
         {view.type === "home" && <HomePage key="home" onNavigate={navigate} />}
-        {view.type === "discover" && (
-          <main key="discover" className="flex-1">
-            <Discover onNavigate={navigate} />
-          </main>
-        )}
         {(view.type === "create" || view.type === "edit") && (
           <main key="editor" className="flex-1">
             <PostEditor

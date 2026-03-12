@@ -4,7 +4,6 @@ export type AppView =
   | { type: "edit"; postId: bigint }
   | { type: "my-posts" }
   | { type: "post"; postId: bigint }
-  | { type: "discover" }
   | { type: "admin" }
   | { type: "profile"; principalId: string };
 

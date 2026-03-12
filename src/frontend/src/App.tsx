@@ -685,7 +685,7 @@ function AppInner() {
   const { login, clear, loginStatus, identity, isInitializing } =
     useInternetIdentity();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [view, setView] = useState<AppView>({ type: "home" });
+  const [view, setView] = useState<AppView>({ type: "discover" });
 
   const navigate: NavigateFn = (v) => {
     setView(v);
@@ -703,6 +703,7 @@ function AppInner() {
       icon: Home,
       ocid: "nav.home.link",
       view: { type: "home" } as AppView,
+      authOnly: true,
     },
     {
       label: "Upptäck",
@@ -746,7 +747,9 @@ function AppInner() {
           <button
             type="button"
             data-ocid="nav.home.link"
-            onClick={() => navigate({ type: "home" })}
+            onClick={() =>
+              navigate(isLoggedIn ? { type: "home" } : { type: "discover" })
+            }
             className="hklo-logo text-2xl shrink-0 cursor-pointer"
           >
             HKLO
@@ -799,7 +802,7 @@ function AppInner() {
                   size="sm"
                   onClick={() => {
                     clear();
-                    navigate({ type: "home" });
+                    navigate({ type: "discover" });
                   }}
                   className="hidden sm:flex items-center gap-1.5 text-sm"
                 >
@@ -879,7 +882,7 @@ function AppInner() {
                     className="flex items-center gap-2.5 px-3 py-2.5 text-sm font-body text-foreground/70 hover:text-foreground hover:bg-accent/50 rounded-lg transition-colors text-left"
                     onClick={() => {
                       clear();
-                      navigate({ type: "home" });
+                      navigate({ type: "discover" });
                     }}
                   >
                     <LogOut className="w-4 h-4" />

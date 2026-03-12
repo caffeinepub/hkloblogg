@@ -1,3 +1,4 @@
+import type { Principal } from "@icp-sdk/core/principal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { AccessLevel, Category, Post } from "../backend.d";
@@ -31,6 +32,30 @@ export function usePublishedPosts() {
   });
 }
 
+export function useDiscoverPosts() {
+  const { actor, isFetching } = useActor();
+  return useQuery<Post[]>({
+    queryKey: ["discoverPosts"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getDiscoverPosts() as Promise<Post[]>;
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useSearchPosts(query: string) {
+  const { actor, isFetching } = useActor();
+  return useQuery<Post[]>({
+    queryKey: ["searchPosts", query],
+    queryFn: async () => {
+      if (!actor || query.length < 2) return [];
+      return actor.searchPosts(query) as Promise<Post[]>;
+    },
+    enabled: !!actor && !isFetching && query.length >= 2,
+  });
+}
+
 export function useCategories() {
   const { actor, isFetching } = useActor();
   return useQuery<Category[]>({
@@ -58,6 +83,28 @@ export function useCreateCategory() {
     }) => {
       if (!actor) throw new Error("Not connected");
       return actor.createCategory(name, description, accessLevel);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+}
+
+export function useAddReaderAlias() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      categoryId,
+      alias,
+      principal,
+    }: {
+      categoryId: bigint;
+      alias: string;
+      principal: Principal;
+    }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.addReaderAliasToCategory(categoryId, alias, principal);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["categories"] });

@@ -52,6 +52,8 @@ export interface backendInterface {
   createCategory: ActorMethod<[string, string, AccessLevel], bigint>;
   updateCategory: ActorMethod<[bigint, string, string, AccessLevel], boolean>;
   addReaderToCategory: ActorMethod<[bigint, Principal], boolean>;
+  addReaderAliasToCategory: ActorMethod<[bigint, string, Principal], boolean>;
+  getReaderAliases: ActorMethod<[Principal[]], [Principal, string][]>;
   getCategories: ActorMethod<[], Category[]>;
   getCategoryById: ActorMethod<[bigint], [] | [Category]>;
   createPost: ActorMethod<[string, string, bigint], { ok: bigint } | { err: string }>;
@@ -63,6 +65,8 @@ export interface backendInterface {
   getPostById: ActorMethod<[bigint], [] | [Post]>;
   getPostsByAuthor: ActorMethod<[], Post[]>;
   getPostsForUser: ActorMethod<[], Post[]>;
+  getDiscoverPosts: ActorMethod<[], Post[]>;
+  searchPosts: ActorMethod<[string], Post[]>;
   getUserProfile: ActorMethod<[Principal], [] | [UserProfile]>;
   setAlias: ActorMethod<[string], boolean>;
   updateUserAliasAdmin: ActorMethod<[Principal, string], boolean>;

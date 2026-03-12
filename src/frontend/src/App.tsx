@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Bell,
   BookOpen,
+  Calendar,
+  Globe,
   Home,
   LogOut,
   Menu,
@@ -24,7 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { Post } from "./backend.d";
 import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
@@ -32,7 +34,10 @@ import {
   useCategories,
   useInitDefaultCategories,
   usePublishedPosts,
+  useSearchPosts,
 } from "./hooks/useQueries";
+import AdminPanel from "./pages/AdminPanel";
+import Discover from "./pages/Discover";
 import MyPosts from "./pages/MyPosts";
 import PostEditor from "./pages/PostEditor";
 import PostView from "./pages/PostView";
@@ -149,11 +154,7 @@ function EmptyState() {
   );
 }
 
-function HomePage({
-  onNavigate,
-}: {
-  onNavigate: NavigateFn;
-}) {
+function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
   const { isInitializing, login, loginStatus, identity } =
     useInternetIdentity();
   const [searchQuery, setSearchQuery] = useState("");
@@ -223,8 +224,10 @@ function HomePage({
                 data-ocid="hero.discover.button"
                 size="lg"
                 variant="outline"
+                onClick={() => onNavigate({ type: "discover" })}
                 className="font-body border-foreground/20 hover:bg-accent/50"
               >
+                <Globe className="w-5 h-5 mr-2" />
                 Utforska berättelser
               </Button>
             </div>
@@ -371,9 +374,132 @@ function HomePage({
   );
 }
 
+// ─── Global search dropdown ───────────────────────────────────────────────────
+function GlobalSearch({ onNavigate }: { onNavigate: NavigateFn }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { data: results = [], isFetching } = useSearchPosts(query);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
+  const showDropdown = open && query.length >= 2;
+
+  return (
+    <div ref={containerRef} className="relative w-full max-w-xs">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <Input
+          data-ocid="nav.search_input"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder="Sök inlägg, författare…"
+          className="pl-9 h-9 font-body text-sm bg-background border-border"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setOpen(false);
+            }}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            aria-label="Rensa sökning"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {showDropdown && (
+          <motion.div
+            data-ocid="nav.search_results.popover"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15 }}
+            className="absolute top-full mt-1.5 left-0 right-0 bg-card border border-border rounded-xl shadow-lg z-50 overflow-hidden"
+          >
+            {isFetching ? (
+              <div className="p-3 space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex gap-2 items-center">
+                    <Skeleton className="h-4 w-4 rounded" />
+                    <Skeleton className="h-4 flex-1" />
+                  </div>
+                ))}
+              </div>
+            ) : results.length === 0 ? (
+              <div className="p-4 text-center text-sm font-body text-muted-foreground">
+                Inga resultat för "{query}"
+              </div>
+            ) : (
+              <ul className="max-h-72 overflow-y-auto py-1">
+                {results.slice(0, 8).map((post) => (
+                  <li key={String(post.id)}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onNavigate({ type: "post", postId: post.id });
+                        setQuery("");
+                        setOpen(false);
+                      }}
+                      className="w-full px-4 py-2.5 text-left hover:bg-accent/50 transition-colors flex flex-col gap-0.5"
+                    >
+                      <span className="font-body font-semibold text-sm text-foreground line-clamp-1">
+                        {post.title}
+                      </span>
+                      <span className="flex items-center gap-2 text-xs font-body text-muted-foreground">
+                        <span>{post.authorAlias}</span>
+                        <span>·</span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {formatDate(post.createdAt)}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function AppInner() {
   // Fire-and-forget: seed default categories once actor is ready
   useInitDefaultCategories();
+  // Actor needed for useSearchPosts inside GlobalSearch — kept top-level
+  useActor();
 
   const { login, clear, loginStatus, identity, isInitializing } =
     useInternetIdentity();
@@ -398,6 +524,12 @@ function AppInner() {
       view: { type: "home" } as AppView,
     },
     {
+      label: "Upptäck",
+      icon: Globe,
+      ocid: "nav.discover.link",
+      view: { type: "discover" } as AppView,
+    },
+    {
       label: "Skapa inlägg",
       icon: PenSquare,
       ocid: "nav.create.link",
@@ -415,7 +547,8 @@ function AppInner() {
       label: "Admin",
       icon: Settings,
       ocid: "nav.admin.link",
-      view: { type: "home" } as AppView,
+      view: { type: "admin" } as AppView,
+      authOnly: true,
     },
   ];
 
@@ -457,6 +590,11 @@ function AppInner() {
               </button>
             ))}
           </nav>
+
+          {/* Global search */}
+          <div className="hidden md:flex flex-1 max-w-xs justify-center">
+            <GlobalSearch onNavigate={navigate} />
+          </div>
 
           {/* Right side */}
           <div className="flex items-center gap-2 shrink-0">
@@ -532,6 +670,10 @@ function AppInner() {
               className="lg:hidden overflow-hidden border-t border-border bg-background"
             >
               <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-1">
+                {/* Mobile search */}
+                <div className="py-2">
+                  <GlobalSearch onNavigate={navigate} />
+                </div>
                 {visibleLinks.map((link) => (
                   <button
                     type="button"
@@ -567,6 +709,11 @@ function AppInner() {
       {/* Main content */}
       <AnimatePresence mode="wait">
         {view.type === "home" && <HomePage key="home" onNavigate={navigate} />}
+        {view.type === "discover" && (
+          <main key="discover" className="flex-1">
+            <Discover onNavigate={navigate} />
+          </main>
+        )}
         {(view.type === "create" || view.type === "edit") && (
           <main key="editor" className="flex-1">
             <PostEditor
@@ -583,6 +730,11 @@ function AppInner() {
         {view.type === "post" && (
           <main key={`post-${String(view.postId)}`} className="flex-1">
             <PostView postId={view.postId} onNavigate={navigate} />
+          </main>
+        )}
+        {view.type === "admin" && (
+          <main key="admin" className="flex-1">
+            <AdminPanel onNavigate={navigate} />
           </main>
         )}
       </AnimatePresence>

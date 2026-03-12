@@ -3,6 +3,8 @@ export type AppView =
   | { type: "create" }
   | { type: "edit"; postId: bigint }
   | { type: "my-posts" }
-  | { type: "post"; postId: bigint };
+  | { type: "post"; postId: bigint }
+  | { type: "discover" }
+  | { type: "admin" };
 
 export type NavigateFn = (view: AppView) => void;

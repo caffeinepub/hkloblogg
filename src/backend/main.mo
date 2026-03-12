@@ -86,6 +86,9 @@ persistent actor {
   var postImages : Map.Map<Nat, PostImages> = Map.empty<Nat, PostImages>();
   var postUpdatedAt : Map.Map<Nat, Int> = Map.empty<Nat, Int>();
 
+  // Fas 3: alias lookup for readers
+  var readerAliasMap : Map.Map<Principal, Text> = Map.empty<Principal, Text>();
+
   let blockedWords : [Text] = [
     "kuk", "fitta", "hora", "javla", "fan", "skit", "idiot", "knull", "helvete",
     "fuck", "shit", "bitch", "cunt", "bastard", "dick", "pussy", "whore"
@@ -122,8 +125,6 @@ persistent actor {
 
   // ── Default category seed ─────────────────────────────────────────────────────
 
-  // Seeds the 5 default categories if none exist yet.
-  // Safe to call multiple times – only runs when categories list is empty.
   public shared (_) func initDefaultCategories() : async () {
     if (categories.size() > 0) { return };
     let now = Time.now();
@@ -195,6 +196,45 @@ persistent actor {
         true;
       };
     };
+  };
+
+  // Fas 3: Add reader with alias to a category
+  public shared (_) func addReaderAliasToCategory(categoryId : Nat, readerAlias : Text, reader : Principal) : async Bool {
+    switch (categories.findIndex(func(c : Category) : Bool = c.id == categoryId)) {
+      case (null) { false };
+      case (?i) {
+        let old = categories[i];
+        if (old.readerList.find(func(p : Principal) : Bool = Principal.equal(p, reader)) == null) {
+          categories := Array.tabulate<Category>(categories.size(), func(j) {
+            if (j == i) { { id = old.id; name = old.name; description = old.description;
+              accessLevel = old.accessLevel;
+              readerList = old.readerList.concat([reader]);
+              createdBy = old.createdBy; createdAt = old.createdAt; updatedAt = Time.now() } }
+            else { categories[j] };
+          });
+        };
+        readerAliasMap.add(reader, readerAlias);
+        true;
+      };
+    };
+  };
+
+  // Fas 3: Resolve aliases for a list of principals
+  public query func getReaderAliases(principals : [Principal]) : async [(Principal, Text)] {
+    var result : [(Principal, Text)] = [];
+    for (p in principals.vals()) {
+      let alias = switch (readerAliasMap.get(p)) {
+        case (?a) { a };
+        case (null) {
+          switch (userProfiles.get(p)) {
+            case (?prof) { prof.alias };
+            case (null) { p.toText() };
+          };
+        };
+      };
+      result := result.concat([(p, alias)]);
+    };
+    result;
   };
 
   public query func getCategories() : async [Category] { categories };
@@ -335,6 +375,41 @@ persistent actor {
             case (#Restricted) { cat.readerList.find(func(r : Principal) : Bool = Principal.equal(r, caller)) != null };
             case (#Private) { AccessControl.isAdmin(accessControlState, caller) };
           };
+        };
+      };
+    }).map(enrichPost);
+  };
+
+  // Fas 3: Only public posts (no login needed for Discover page)
+  public query func getDiscoverPosts() : async [Post] {
+    posts.filter(func(p : PostInternal) : Bool {
+      if (p.status != #Published) { return false };
+      switch (categories.find(func(c : Category) : Bool = c.id == p.categoryId)) {
+        case (null) { false };
+        case (?cat) { cat.accessLevel == #Public };
+      };
+    }).map(enrichPost);
+  };
+
+  // Fas 3: Search posts by text with access control
+  public query ({ caller }) func searchPosts(queryText : Text) : async [Post] {
+    let q = queryText.toLower();
+    posts.filter(func(p : PostInternal) : Bool {
+      if (p.status != #Published) { return false };
+      switch (categories.find(func(c : Category) : Bool = c.id == p.categoryId)) {
+        case (null) { false };
+        case (?cat) {
+          let hasAccess = switch (cat.accessLevel) {
+            case (#Public) { true };
+            case (#Restricted) { cat.readerList.find(func(r : Principal) : Bool = Principal.equal(r, caller)) != null };
+            case (#Private) { AccessControl.isAdmin(accessControlState, caller) };
+          };
+          if (not hasAccess) { return false };
+          let titleMatch = p.title.toLower().contains(#text q);
+          let contentMatch = p.content.toLower().contains(#text q);
+          let categoryMatch = cat.name.toLower().contains(#text q);
+          let aliasMatch = p.authorAlias.toLower().contains(#text q);
+          titleMatch or contentMatch or categoryMatch or aliasMatch;
         };
       };
     }).map(enrichPost);

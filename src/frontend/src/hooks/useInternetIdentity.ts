@@ -1,3 +1,33 @@
+// ============================================================
+// ⚠️  VARNING -- KRITISK FIL -- LÄS INNAN DU ÄNDRAR  ⚠️
+// ============================================================
+// Denna fil har upprepade gånger blivit trasig av till synes
+// små ändringar. Följ reglerna nedan EXAKT.
+//
+// REGEL 1: authClient MÅSTE vara useRef -- ALDRIG useState
+//   - Om authClient är useState triggar setAuthClient() ett
+//     nytt render → useEffect kör om sig → oändlig loop.
+//
+// REGEL 2: finally-blocket FÅR INTE sätta setStatus("idle")
+//   - finally körs ALLTID, även efter att en sparad session
+//     hittats och setStatus("success") anropats. Det överskriver
+//     "success" med "idle" och döljer alla menyval/inlägg.
+//
+// REGEL 3: useEffect-dependency-arrayen FÅR INTE innehålla authClient
+//   - authClientRef.current ändras utan att trigga re-renders.
+//     Det är rätt beteende. Lägg INTE till authClient i arrayen.
+//
+// REGEL 4: login() ska SYNKA state om sessionen redan är giltig
+//   - INTE sätta loginError. Annars slutar knappen fungera.
+//
+// REGEL 5: status sätts EXPLICIT
+//   - "success" om isAuthenticated() === true vid init
+//   - "idle" annars
+//   - Aldrig via finally-blocket
+//
+// Se AUTH_RULES.md för fullständig förklaring och historik.
+// ============================================================
+
 import {
   AuthClient,
   type AuthClientCreateOptions,
@@ -88,7 +118,7 @@ export function InternetIdentityProvider({
   children: ReactNode;
   createOptions?: AuthClientCreateOptions;
 }>) {
-  // Use ref so the effect never re-runs due to authClient changes
+  // ⚠️ REGEL 1: useRef -- aldrig useState för authClient
   const authClientRef = useRef<AuthClient | undefined>(undefined);
   const createOptionsRef = useRef(createOptions);
 
@@ -102,12 +132,11 @@ export function InternetIdentityProvider({
   }, []);
 
   const handleLoginSuccess = useCallback(() => {
-    const client = authClientRef.current;
-    if (!client) {
+    const latestIdentity = authClientRef.current?.getIdentity();
+    if (!latestIdentity) {
       setErrorMessage("Identity not found after successful login");
       return;
     }
-    const latestIdentity = client.getIdentity();
     setIdentity(latestIdentity);
     setStatus("success");
   }, [setErrorMessage]);
@@ -119,22 +148,23 @@ export function InternetIdentityProvider({
     [setErrorMessage],
   );
 
+  // ⚠️ REGEL 4: Synka state om sessionen redan är giltig
   const login = useCallback(() => {
     const client = authClientRef.current;
     if (!client) {
       setErrorMessage(
-        "AuthClient is not initialized yet, make sure to call `login` on user interaction e.g. click.",
+        "AuthClient is not initialized yet, make sure to call login on user interaction.",
       );
       return;
     }
 
     const currentIdentity = client.getIdentity();
-    // If already authenticated, sync state and return
     if (
       !currentIdentity.getPrincipal().isAnonymous() &&
       currentIdentity instanceof DelegationIdentity &&
       isDelegationValid(currentIdentity.getDelegation())
     ) {
+      // Redan autentiserad -- synka state tyst istället för att sätta fel
       setIdentity(currentIdentity);
       setStatus("success");
       return;
@@ -176,24 +206,29 @@ export function InternetIdentityProvider({
       });
   }, [setErrorMessage]);
 
-  // Runs exactly once on mount -- no authClient in dep array
+  // ⚠️ REGEL 2 & 3: Inget finally, inga authClient i deps -- körs EN gång
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         setStatus("initializing");
-        const client = await createAuthClient(createOptionsRef.current);
+        if (!authClientRef.current) {
+          authClientRef.current = await createAuthClient(
+            createOptionsRef.current,
+          );
+        }
         if (cancelled) return;
-        authClientRef.current = client;
 
-        const isAuthenticated = await client.isAuthenticated();
+        const isAuthenticated = await authClientRef.current.isAuthenticated();
         if (cancelled) return;
 
         if (isAuthenticated) {
-          const loadedIdentity = client.getIdentity();
+          // ⚠️ REGEL 5: Explicit "success" -- INTE via finally
+          const loadedIdentity = authClientRef.current.getIdentity();
           setIdentity(loadedIdentity);
-          setStatus("success"); // Explicit success -- no finally to overwrite this
+          setStatus("success");
         } else {
+          // ⚠️ REGEL 5: Explicit "idle" om ingen session
           setStatus("idle");
         }
       } catch (unknownError) {
@@ -206,12 +241,12 @@ export function InternetIdentityProvider({
           );
         }
       }
-      // NO finally block -- status is set explicitly above
+      // ⚠️ REGEL 2: INGET finally-block här
     })();
     return () => {
       cancelled = true;
     };
-  }, []); // Empty dep array -- runs once
+  }, []); // ⚠️ REGEL 3: Tom dependency-array -- körs exakt en gång
 
   const value = useMemo<ProviderValue>(
     () => ({

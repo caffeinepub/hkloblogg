@@ -108,36 +108,75 @@ actor {
     timestamp : Int;
   };
 
-  var categories : [Category] = [];
-  var nextCategoryId : Nat = 1;
-  var posts : [PostInternal] = [];
-  var nextPostId : Nat = 1;
-  var userProfiles : Map.Map<Principal, UserProfile> = Map.empty<Principal, UserProfile>();
-  var moderationLogs : [ModerationLog] = [];
-  var nextLogId : Nat = 1;
+  // ── Stable state (survives upgrades/deploys) ──────────────────────────────
 
+  // Simple arrays and counters -- stable directly
+  stable var categories : [Category] = [];
+  stable var nextCategoryId : Nat = 1;
+  stable var posts : [PostInternal] = [];
+  stable var nextPostId : Nat = 1;
+  stable var moderationLogs : [ModerationLog] = [];
+  stable var nextLogId : Nat = 1;
+  stable var notifications : [Notification] = [];
+  stable var nextNotifId : Nat = 1;
+  stable var follows : [(Principal, Principal)] = [];
+  stable var comments : [Comment] = [];
+  stable var nextCommentId : Nat = 1;
+
+  // Stable backup arrays for Maps (Maps themselves are not stable)
+  stable var stableUserProfiles : [(Principal, UserProfile)] = [];
+  stable var stablePostImages : [(Nat, PostImages)] = [];
+  stable var stablePostUpdatedAt : [(Nat, Int)] = [];
+  stable var stableReaderAliasMap : [(Principal, Text)] = [];
+  stable var stableBlockedUsers : [(Principal, Bool)] = [];
+  stable var stablePostReactions : [(Nat, [Reaction])] = [];
+
+  // Runtime Maps (reconstructed from stable backups on upgrade)
+  var userProfiles : Map.Map<Principal, UserProfile> = Map.empty<Principal, UserProfile>();
   var postImages : Map.Map<Nat, PostImages> = Map.empty<Nat, PostImages>();
   var postUpdatedAt : Map.Map<Nat, Int> = Map.empty<Nat, Int>();
-
-  // Fas 3: alias lookup for readers
   var readerAliasMap : Map.Map<Principal, Text> = Map.empty<Principal, Text>();
-
-  // Blocked users
   var blockedUsers : Map.Map<Principal, Bool> = Map.empty<Principal, Bool>();
-
-  // Fas 5: Notifications
-  var notifications : [Notification] = [];
-  var nextNotifId : Nat = 1;
-
-  // Fas 5: Follows -- array of (follower, followee) pairs
-  var follows : [(Principal, Principal)] = [];
-
-  // Fas 6: Reactions per post
   var postReactions : Map.Map<Nat, [Reaction]> = Map.empty<Nat, [Reaction]>();
 
-  // Fas 6: Comments
-  var comments : [Comment] = [];
-  var nextCommentId : Nat = 1;
+  // ── Upgrade hooks ─────────────────────────────────────────────────────────
+
+  system func preupgrade() {
+    var up : [(Principal, UserProfile)] = [];
+    for (entry in userProfiles.entries()) { up := up.concat([entry]) };
+    stableUserProfiles := up;
+
+    var ip : [(Nat, PostImages)] = [];
+    for (entry in postImages.entries()) { ip := ip.concat([entry]) };
+    stablePostImages := ip;
+
+    var ua : [(Nat, Int)] = [];
+    for (entry in postUpdatedAt.entries()) { ua := ua.concat([entry]) };
+    stablePostUpdatedAt := ua;
+
+    var ra : [(Principal, Text)] = [];
+    for (entry in readerAliasMap.entries()) { ra := ra.concat([entry]) };
+    stableReaderAliasMap := ra;
+
+    var bu : [(Principal, Bool)] = [];
+    for (entry in blockedUsers.entries()) { bu := bu.concat([entry]) };
+    stableBlockedUsers := bu;
+
+    var pr : [(Nat, [Reaction])] = [];
+    for (entry in postReactions.entries()) { pr := pr.concat([entry]) };
+    stablePostReactions := pr;
+  };
+
+  system func postupgrade() {
+    for ((k, v) in stableUserProfiles.vals()) { userProfiles.add(k, v) };
+    for ((k, v) in stablePostImages.vals()) { postImages.add(k, v) };
+    for ((k, v) in stablePostUpdatedAt.vals()) { postUpdatedAt.add(k, v) };
+    for ((k, v) in stableReaderAliasMap.vals()) { readerAliasMap.add(k, v) };
+    for ((k, v) in stableBlockedUsers.vals()) { blockedUsers.add(k, v) };
+    for ((k, v) in stablePostReactions.vals()) { postReactions.add(k, v) };
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   let blockedWords : [Text] = [
     "kuk", "fitta", "hora", "javla", "fan", "skit", "idiot", "knull", "helvete",
@@ -221,6 +260,7 @@ actor {
 
   // Categories
   public shared ({ caller }) func createCategory(name : Text, description : Text, accessLevel : AccessLevel) : async Nat {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return 0 };
     let id = nextCategoryId;
     nextCategoryId += 1;
     categories := categories.concat([{

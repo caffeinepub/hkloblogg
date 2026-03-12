@@ -3,6 +3,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BookOpen, Globe } from "lucide-react";
 import { motion } from "motion/react";
 import type { Post } from "../backend.d";
+import { useActor } from "../hooks/useActor";
 import { useDiscoverPosts } from "../hooks/useQueries";
 import type { NavigateFn } from "../types";
 
@@ -74,7 +75,9 @@ interface DiscoverProps {
 }
 
 export default function Discover({ onNavigate }: DiscoverProps) {
+  const { isFetching: isActorFetching } = useActor();
   const { data: posts = [], isLoading } = useDiscoverPosts();
+  const showLoading = isLoading || isActorFetching;
 
   return (
     <motion.div
@@ -98,7 +101,7 @@ export default function Discover({ onNavigate }: DiscoverProps) {
         </p>
       </div>
 
-      {isLoading ? (
+      {showLoading ? (
         <div
           data-ocid="discover.loading_state"
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"

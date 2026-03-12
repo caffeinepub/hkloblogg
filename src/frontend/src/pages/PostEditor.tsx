@@ -26,7 +26,8 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
-import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
+import EmojiPicker from "../components/SimpleEmojiPicker";
+type EmojiClickData = { emoji: string };
 import {
   Bold,
   ChevronDown,
@@ -706,7 +707,13 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
           galleryImageKeys: galleryKeys,
         });
       }
-      await publishPost.mutateAsync(targetId!);
+      const published = await publishPost.mutateAsync(targetId!);
+      if (!published) {
+        toast.error(
+          "Inlägget kunde inte publiceras. Kontrollera att du är inloggad och försök igen.",
+        );
+        return;
+      }
       if (authorName.trim() && authorName.trim() !== authorAlias) {
         await setAlias.mutateAsync(authorName.trim());
       }
@@ -852,7 +859,6 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
                         document.execCommand("insertText", false, data.emoji);
                         setShowEditorEmoji(false);
                       }}
-                      lazyLoadEmojis
                       searchPlaceholder="Su00f6k emoji..."
                     />
                   </div>

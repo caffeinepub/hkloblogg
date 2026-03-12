@@ -40,14 +40,16 @@ export function usePublishedPosts() {
 }
 
 export function useDiscoverPosts() {
-  const { actor, isFetching } = useActor();
+  const { actor } = useActor();
   return useQuery<Post[]>({
     queryKey: ["discoverPosts"],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getDiscoverPosts() as Promise<Post[]>;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor,
+    refetchOnMount: "always",
+    staleTime: 0,
   });
 }
 
@@ -93,6 +95,7 @@ export function useCreateCategory() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["categories"] });
+      qc.invalidateQueries({ queryKey: ["discoverPosts"] });
     },
   });
 }

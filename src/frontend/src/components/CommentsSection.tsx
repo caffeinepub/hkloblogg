@@ -2,7 +2,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
+import EmojiPicker from "../components/SimpleEmojiPicker";
+type EmojiClickData = { emoji: string };
 import { ImagePlus, Loader2, Smile, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -295,7 +296,6 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
                   <div className="absolute bottom-10 left-0 z-50">
                     <EmojiPicker
                       onEmojiClick={onEmojiClick}
-                      lazyLoadEmojis
                       searchPlaceholder="Sök emoji..."
                     />
                   </div>

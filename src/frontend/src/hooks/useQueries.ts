@@ -549,3 +549,93 @@ export function usePostsByPrincipal(principalId: Principal | null) {
     enabled: !!actor && !isFetching && !!principalId,
   });
 }
+
+// ─── Fas 6: Reactions ─────────────────────────────────────────────────────────
+
+export function usePostReactions(postId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["reactions", postId?.toString()],
+    queryFn: async () => {
+      if (!actor || postId === null) return [];
+      return actor.getPostReactions(postId);
+    },
+    enabled: !!actor && !isFetching && postId !== null,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useAddReaction() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      postId,
+      emoji,
+    }: { postId: bigint; emoji: string }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.addReactionToPost(postId, emoji);
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["reactions", vars.postId.toString()] });
+      qc.invalidateQueries({ queryKey: ["publishedPosts"] });
+      qc.invalidateQueries({ queryKey: ["discoverPosts"] });
+    },
+  });
+}
+
+export function useRemoveReaction() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      postId,
+      emoji,
+    }: { postId: bigint; emoji: string }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.removeReactionFromPost(postId, emoji);
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["reactions", vars.postId.toString()] });
+    },
+  });
+}
+
+// ─── Fas 6: Comments ─────────────────────────────────────────────────────────
+
+export function useComments(postId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery({
+    queryKey: ["comments", postId?.toString()],
+    queryFn: async () => {
+      if (!actor || postId === null) return [];
+      return actor.getComments(postId);
+    },
+    enabled: !!actor && !isFetching && postId !== null,
+    refetchInterval: 15_000,
+  });
+}
+
+export function useAddComment() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      postId,
+      content,
+      imageKeys,
+    }: {
+      postId: bigint;
+      content: string;
+      imageKeys: string[];
+    }) => {
+      if (!actor) throw new Error("Not connected");
+      const result = await actor.addComment(postId, content, imageKeys);
+      if ("err" in result) throw new Error(result.err);
+      return result.ok;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["comments", vars.postId.toString()] });
+    },
+  });
+}

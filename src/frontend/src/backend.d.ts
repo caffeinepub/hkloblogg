@@ -3,6 +3,12 @@ import type { ActorMethod } from "@icp-sdk/core/actor";
 
 export type AccessLevel = { Public: null } | { Restricted: null } | { Private: null };
 
+export interface Reaction {
+  userPrincipal: Principal;
+  emoji: string;
+  createdAt: bigint;
+}
+
 export interface Category {
   id: bigint;
   name: string;
@@ -26,6 +32,18 @@ export interface Post {
   status: { Draft: null } | { Published: null };
   coverImageKey: [] | [string];
   galleryImageKeys: string[];
+  reactions: Reaction[];
+}
+
+export interface Comment {
+  id: bigint;
+  postId: bigint;
+  authorPrincipal: Principal;
+  authorAlias: string;
+  content: string;
+  imageKeys: string[];
+  createdAt: bigint;
+  reactions: Reaction[];
 }
 
 export interface UserProfile {
@@ -99,6 +117,12 @@ export interface backendInterface {
   getFollowers: ActorMethod<[Principal], Principal[]>;
   getFollowing: ActorMethod<[Principal], Principal[]>;
   isFollowing: ActorMethod<[Principal], boolean>;
+  // Fas 6
+  addReactionToPost: ActorMethod<[bigint, string], boolean>;
+  removeReactionFromPost: ActorMethod<[bigint, string], boolean>;
+  getPostReactions: ActorMethod<[bigint], Reaction[]>;
+  addComment: ActorMethod<[bigint, string, string[]], { ok: Comment } | { err: string }>;
+  getComments: ActorMethod<[bigint], Comment[]>;
   _initializeAccessControlWithSecret: ActorMethod<[string], undefined>;
 }
 

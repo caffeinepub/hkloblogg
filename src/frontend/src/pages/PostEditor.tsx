@@ -26,6 +26,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
+import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import {
   Bold,
   ChevronDown,
@@ -41,6 +42,7 @@ import {
   Plus,
   Save,
   Send,
+  Smile,
   Trash2,
   Users,
   X,
@@ -469,9 +471,25 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
+  const editorEmojiRef = useRef<HTMLDivElement>(null);
+  const [showEditorEmoji, setShowEditorEmoji] = useState(false);
 
   const [initialized, setInitialized] = useState(false);
 
+  // Close editor emoji picker on outside click
+  useEffect(() => {
+    if (!showEditorEmoji) return;
+    function handleClick(e: MouseEvent) {
+      if (
+        editorEmojiRef.current &&
+        !editorEmojiRef.current.contains(e.target as Node)
+      ) {
+        setShowEditorEmoji(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showEditorEmoji]);
   // Sync authorName when userProfile loads
   useEffect(() => {
     if (authorAlias && !authorName) setAuthorName(authorAlias);
@@ -812,6 +830,34 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
                   <btn.icon className="w-4 h-4" />
                 </button>
               ))}
+              {/* Emoji picker for editor */}
+              <div ref={editorEmojiRef} className="relative ml-auto">
+                <button
+                  type="button"
+                  title="Lu00e4gg till emoji"
+                  aria-label="Emoji-vu00e4ljare"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setShowEditorEmoji((v) => !v);
+                  }}
+                  className="p-2 rounded-lg hover:bg-accent/70 transition-colors text-foreground/70 hover:text-amber-600"
+                >
+                  <Smile className="w-4 h-4" />
+                </button>
+                {showEditorEmoji && (
+                  <div className="absolute top-10 right-0 z-50">
+                    <EmojiPicker
+                      onEmojiClick={(data: EmojiClickData) => {
+                        editorRef.current?.focus();
+                        document.execCommand("insertText", false, data.emoji);
+                        setShowEditorEmoji(false);
+                      }}
+                      lazyLoadEmojis
+                      searchPlaceholder="Su00f6k emoji..."
+                    />
+                  </div>
+                )}
+              </div>
             </div>
             <div
               ref={editorRef}

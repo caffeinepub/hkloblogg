@@ -33,6 +33,13 @@ actor {
     galleryImageKeys : [Text];
   };
 
+  // Fas 6: Reaction type
+  public type Reaction = {
+    userPrincipal : Principal;
+    emoji : Text;
+    createdAt : Int;
+  };
+
   public type Post = {
     id : Nat;
     title : Text;
@@ -45,6 +52,19 @@ actor {
     status : { #Draft; #Published };
     coverImageKey : ?Text;
     galleryImageKeys : [Text];
+    reactions : [Reaction];
+  };
+
+  // Fas 6: Comment type
+  public type Comment = {
+    id : Nat;
+    postId : Nat;
+    authorPrincipal : Principal;
+    authorAlias : Text;
+    content : Text;
+    imageKeys : [Text];
+    createdAt : Int;
+    reactions : [Reaction];
   };
 
   public type Category = {
@@ -77,8 +97,7 @@ actor {
     timestamp : Int;
   };
 
-  // ── Fas 5: Notification & Follow types ───────────────────────────────────────
-
+  // Fas 5: Notification & Follow types
   public type Notification = {
     id : Nat;
     toPrincipal : Principal;
@@ -113,6 +132,13 @@ actor {
   // Fas 5: Follows -- array of (follower, followee) pairs
   var follows : [(Principal, Principal)] = [];
 
+  // Fas 6: Reactions per post
+  var postReactions : Map.Map<Nat, [Reaction]> = Map.empty<Nat, [Reaction]>();
+
+  // Fas 6: Comments
+  var comments : [Comment] = [];
+  var nextCommentId : Nat = 1;
+
   let blockedWords : [Text] = [
     "kuk", "fitta", "hora", "javla", "fan", "skit", "idiot", "knull", "helvete",
     "fuck", "shit", "bitch", "cunt", "bastard", "dick", "pussy", "whore"
@@ -132,6 +158,10 @@ actor {
       case (?t) { t };
       case (null) { p.createdAt };
     };
+    let reactions : [Reaction] = switch (postReactions.get(p.id)) {
+      case (?r) { r };
+      case (null) { [] };
+    };
     {
       id = p.id;
       title = p.title;
@@ -144,11 +174,11 @@ actor {
       status = p.status;
       coverImageKey = imgs.coverImageKey;
       galleryImageKeys = imgs.galleryImageKeys;
+      reactions;
     };
   };
 
-  // ── Fas 5: Internal notification helper ──────────────────────────────────────
-
+  // Fas 5: Internal notification helper
   func addNotification(toPrincipal : Principal, message : Text, link : Text, notifType : Text) {
     if (toPrincipal.isAnonymous()) { return };
     let id = nextNotifId;
@@ -164,17 +194,16 @@ actor {
     }]);
   };
 
-  // ── Default category seed ─────────────────────────────────────────────────────
-
+  // Default category seed
   public shared (_) func initDefaultCategories() : async () {
     if (categories.size() > 0) { return };
     let now = Time.now();
     let seedCreator = Principal.fromText("aaaaa-aa");
     let defaults : [(Text, Text, AccessLevel)] = [
-      ("Offentligt", "Synlig för alla",          #Public),
-      ("Vänner",     "Synlig för vänner",        #Restricted),
-      ("Familj",     "Privat för familjen",      #Private),
-      ("Arbete",     "Arbetsrelaterade inlägg",  #Restricted),
+      ("Offentligt", "Synlig f\u{f6}r alla",          #Public),
+      ("V\u{e4}nner",     "Synlig f\u{f6}r v\u{e4}nner",        #Restricted),
+      ("Familj",     "Privat f\u{f6}r familjen",      #Private),
+      ("Arbete",     "Arbetsrelaterade inl\u{e4}gg",  #Restricted),
       ("Teknik",     "Tech och programmering",   #Public),
     ];
     for ((name, description, accessLevel) in defaults.vals()) {
@@ -190,8 +219,7 @@ actor {
     };
   };
 
-  // ── Categories ───────────────────────────────────────────────────────────────
-
+  // Categories
   public shared ({ caller }) func createCategory(name : Text, description : Text, accessLevel : AccessLevel) : async Nat {
     let id = nextCategoryId;
     nextCategoryId += 1;
@@ -222,7 +250,6 @@ actor {
     };
   };
 
-
   public shared ({ caller }) func deleteCategory(id : Nat) : async Bool {
     if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
     let sizeBefore = categories.size();
@@ -249,7 +276,6 @@ actor {
     };
   };
 
-  // Fas 3: Add reader with alias to a category
   public shared ({ caller }) func addReaderAliasToCategory(categoryId : Nat, readerAlias : Text, reader : Principal) : async Bool {
     if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
     switch (categories.findIndex(func(c : Category) : Bool = c.id == categoryId)) {
@@ -271,7 +297,6 @@ actor {
     };
   };
 
-  // Fas 3: Resolve aliases for a list of principals
   public query func getReaderAliases(principals : [Principal]) : async [(Principal, Text)] {
     var result : [(Principal, Text)] = [];
     for (p in principals.vals()) {
@@ -295,11 +320,10 @@ actor {
     categories.find(func(c : Category) : Bool = c.id == id);
   };
 
-  // ── Posts ────────────────────────────────────────────────────────────────────
-
+  // Posts
   public shared ({ caller }) func createPost(title : Text, content : Text, categoryId : Nat) : async { #ok : Nat; #err : Text } {
     if (blockedUsers.get(caller) != null) {
-      return #err("Ditt konto är blockerat. Du kan inte skapa inlägg.");
+      return #err("Ditt konto \u{e4}r blockerat. Du kan inte skapa inl\u{e4}gg.");
     };
     switch (checkBlocked(title # " " # content)) {
       case (?word) {
@@ -309,7 +333,7 @@ actor {
           reason = "Blocked word: " # word; timestamp = Time.now();
         }]);
         nextLogId += 1;
-        return #err("Innehållet innehåller otillåtna ord.");
+        return #err("Inneh\u{e5}llet inneh\u{e5}ller otill\u{e5}tna ord.");
       };
       case (null) {};
     };
@@ -331,18 +355,18 @@ actor {
 
   public shared ({ caller }) func updatePost(postId : Nat, title : Text, content : Text, categoryId : Nat) : async { #ok : Bool; #err : Text } {
     if (blockedUsers.get(caller) != null and not AccessControl.isAdmin(accessControlState, caller)) {
-      return #err("Ditt konto är blockerat.");
+      return #err("Ditt konto \u{e4}r blockerat.");
     };
     switch (checkBlocked(title # " " # content)) {
-      case (?_word) { return #err("Innehållet innehåller otillåtna ord.") };
+      case (?_word) { return #err("Inneh\u{e5}llet inneh\u{e5}ller otill\u{e5}tna ord.") };
       case (null) {};
     };
     switch (posts.findIndex(func(p : PostInternal) : Bool = p.id == postId)) {
-      case (null) { #err("Inlägget hittades inte.") };
+      case (null) { #err("Inl\u{e4}gget hittades inte.") };
       case (?i) {
         let old = posts[i];
         if (not Principal.equal(old.authorPrincipal, caller) and not AccessControl.isAdmin(accessControlState, caller)) {
-          return #err("Inte behörig.");
+          return #err("Inte beh\u{f6}rig.");
         };
         let now = Time.now();
         posts := Array.tabulate<PostInternal>(posts.size(), func(j) {
@@ -380,6 +404,9 @@ actor {
         posts := posts.filter(func(q : PostInternal) : Bool = q.id != postId);
         postImages.remove(postId);
         postUpdatedAt.remove(postId);
+        postReactions.remove(postId);
+        // Remove comments for this post
+        comments := comments.filter(func(c : Comment) : Bool = c.postId != postId);
         true;
       };
     };
@@ -398,7 +425,6 @@ actor {
           else { posts[j] };
         });
         postUpdatedAt.add(postId, Time.now());
-        // Fas 5: Notify all followers of the author
         let author = old.authorPrincipal;
         let authorAlias = old.authorAlias;
         let postLink = "/post/" # postId.toText();
@@ -406,7 +432,7 @@ actor {
           if (Principal.equal(followee, author)) {
             addNotification(
               follower,
-              authorAlias # " publicerade ett nytt inlägg: " # old.title,
+              authorAlias # " publicerade ett nytt inl\u{e4}gg: " # old.title,
               postLink,
               "new_post"
             );
@@ -458,7 +484,6 @@ actor {
     }).map(enrichPost);
   };
 
-  // Fas 3: Only public posts (no login needed for Discover page)
   public query func getDiscoverPosts() : async [Post] {
     posts.filter(func(p : PostInternal) : Bool {
       if (p.status != #Published) { return false };
@@ -469,7 +494,6 @@ actor {
     }).map(enrichPost);
   };
 
-  // Fas 3: Search posts by text with access control
   public query ({ caller }) func searchPosts(queryText : Text) : async [Post] {
     let q = queryText.toLower();
     posts.filter(func(p : PostInternal) : Bool {
@@ -493,8 +517,7 @@ actor {
     }).map(enrichPost);
   };
 
-  // ── User profiles ─────────────────────────────────────────────────────────────
-
+  // User profiles
   public query func getUserProfile(principalId : Principal) : async ?UserProfile {
     userProfiles.get(principalId);
   };
@@ -544,11 +567,10 @@ actor {
     checkBlocked(text);
   };
 
-  // ── User blocking ──────────────────────────────────────────────────────────────
-
+  // User blocking
   public shared ({ caller }) func blockUser(target : Principal) : async Bool {
     if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
-    if (AccessControl.isAdmin(accessControlState, target)) { return false }; // can't block admins
+    if (AccessControl.isAdmin(accessControlState, target)) { return false };
     blockedUsers.add(target, true);
     let alias = switch (userProfiles.get(target)) {
       case (?p) { p.alias };
@@ -590,8 +612,7 @@ actor {
     blockedUsers.get(user) != null;
   };
 
-  // ── Fas 5: Notifications ───────────────────────────────────────────────────────
-
+  // Fas 5: Notifications
   public shared ({ caller }) func sendNotification(toPrincipal : Principal, message : Text, link : Text, notifType : Text) : async Bool {
     addNotification(toPrincipal, message, link, notifType);
     true;
@@ -619,25 +640,22 @@ actor {
     true;
   };
 
-  // ── Fas 5: Follow system ───────────────────────────────────────────────────────
-
+  // Fas 5: Follow system
   public shared ({ caller }) func followUser(followeePrincipal : Principal) : async Bool {
     if (caller.isAnonymous()) { return false };
     if (Principal.equal(caller, followeePrincipal)) { return false };
-    // Check if already following
     let alreadyFollowing = follows.find(func((f, fe) : (Principal, Principal)) : Bool =
       Principal.equal(f, caller) and Principal.equal(fe, followeePrincipal)
     ) != null;
     if (alreadyFollowing) { return true };
     follows := follows.concat([(caller, followeePrincipal)]);
-    // Send notification to followee
     let followerAlias = switch (userProfiles.get(caller)) {
       case (?p) { p.alias };
       case (null) { caller.toText() };
     };
     addNotification(
       followeePrincipal,
-      followerAlias # " började följa dig!",
+      followerAlias # " b\u{f6}rjade f\u{f6}lja dig!",
       "/profile/" # caller.toText(),
       "follow"
     );
@@ -677,4 +695,86 @@ actor {
       Principal.equal(f, caller) and Principal.equal(fe, followeePrincipal)
     ) != null;
   };
+
+  // ── Fas 6: Reactions ──────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func addReactionToPost(postId : Nat, emoji : Text) : async Bool {
+    if (caller.isAnonymous()) { return false };
+    if (blockedUsers.get(caller) != null) { return false };
+    let existing : [Reaction] = switch (postReactions.get(postId)) {
+      case (?r) { r };
+      case (null) { [] };
+    };
+    // Check duplicate
+    let alreadyReacted = existing.find(func(r : Reaction) : Bool =
+      Principal.equal(r.userPrincipal, caller) and r.emoji == emoji
+    ) != null;
+    if (alreadyReacted) { return false };
+    postReactions.add(postId, existing.concat([{
+      userPrincipal = caller;
+      emoji;
+      createdAt = Time.now();
+    }]));
+    true;
+  };
+
+  public shared ({ caller }) func removeReactionFromPost(postId : Nat, emoji : Text) : async Bool {
+    if (caller.isAnonymous()) { return false };
+    let existing : [Reaction] = switch (postReactions.get(postId)) {
+      case (?r) { r };
+      case (null) { return false };
+    };
+    postReactions.add(postId, existing.filter(func(r : Reaction) : Bool =
+      not (Principal.equal(r.userPrincipal, caller) and r.emoji == emoji)
+    ));
+    true;
+  };
+
+  public query func getPostReactions(postId : Nat) : async [Reaction] {
+    switch (postReactions.get(postId)) {
+      case (?r) { r };
+      case (null) { [] };
+    };
+  };
+
+  // ── Fas 6: Comments ───────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func addComment(postId : Nat, content : Text, imageKeys : [Text]) : async { #ok : Comment; #err : Text } {
+    if (caller.isAnonymous()) { return #err("Du m\u{e5}ste vara inloggad f\u{f6}r att kommentera.") };
+    if (blockedUsers.get(caller) != null) { return #err("Ditt konto \u{e4}r blockerat.") };
+    switch (checkBlocked(content)) {
+      case (?word) {
+        moderationLogs := moderationLogs.concat([{
+          id = nextLogId; action = "block"; admin = caller; targetUser = ?caller;
+          contentType = "comment"; snippet = content;
+          reason = "Blocked word: " # word; timestamp = Time.now();
+        }]);
+        nextLogId += 1;
+        return #err("Kommentaren inneh\u{e5}ller otill\u{e5}tna ord.");
+      };
+      case (null) {};
+    };
+    let authorAlias = switch (userProfiles.get(caller)) {
+      case (?p) { p.alias };
+      case (null) { "Anonym" };
+    };
+    let id = nextCommentId;
+    nextCommentId += 1;
+    let comment : Comment = {
+      id; postId;
+      authorPrincipal = caller;
+      authorAlias;
+      content;
+      imageKeys;
+      createdAt = Time.now();
+      reactions = [];
+    };
+    comments := comments.concat([comment]);
+    #ok comment;
+  };
+
+  public query func getComments(postId : Nat) : async [Comment] {
+    comments.filter(func(c : Comment) : Bool = c.postId == postId);
+  };
+
 };

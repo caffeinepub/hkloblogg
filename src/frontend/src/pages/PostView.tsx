@@ -4,6 +4,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, ChevronLeft, Edit, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import CommentsSection from "../components/CommentsSection";
+import ReactionBar from "../components/ReactionBar";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useCategories, usePostById } from "../hooks/useQueries";
 import { useStorageClient } from "../hooks/useStorageClient";
@@ -274,6 +276,21 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
             </button>
           </motion.div>
         )}
+        {/* Reactions & Comments */}
+        <div className="mt-10 border-t border-border pt-8 space-y-8">
+          <section>
+            <h2 className="font-display text-lg font-bold text-foreground mb-4">
+              Reaktioner
+            </h2>
+            <ReactionBar postId={post.id} />
+          </section>
+          <section>
+            <h2 className="font-display text-lg font-bold text-foreground mb-4">
+              Kommentarer
+            </h2>
+            <CommentsSection postId={post.id} />
+          </section>
+        </div>
       </AnimatePresence>
     </motion.article>
   );

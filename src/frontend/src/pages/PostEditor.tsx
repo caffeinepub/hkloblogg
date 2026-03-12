@@ -49,14 +49,17 @@ import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AccessLevel, Category } from "../backend.d";
+import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   useCategories,
   useCreateCategory,
   useCreatePost,
   usePostById,
   usePublishPost,
+  useSetAlias,
   useUpdatePost,
   useUpdatePostImages,
+  useUserProfile,
 } from "../hooks/useQueries";
 import { useStorageClient } from "../hooks/useStorageClient";
 import type { NavigateFn } from "../types";
@@ -435,6 +438,13 @@ function CategoryCombobox({
 // ─── Main PostEditor ──────────────────────────────────────────────────────────
 export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
   const isEditing = postId !== undefined;
+  const { identity } = useInternetIdentity();
+  const principalId = identity?.getPrincipal() ?? null;
+  const { data: userProfile } = useUserProfile(principalId);
+  const authorAlias =
+    userProfile?.alias || localStorage.getItem("hklo_alias") || "";
+  const setAlias = useSetAlias();
+  const [authorName, setAuthorName] = useState(authorAlias);
   const { data: existingPost, isLoading: postLoading } = usePostById(
     postId ?? null,
   );
@@ -461,6 +471,11 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [initialized, setInitialized] = useState(false);
+
+  // Sync authorName when userProfile loads
+  useEffect(() => {
+    if (authorAlias && !authorName) setAuthorName(authorAlias);
+  }, [authorAlias, authorName]);
 
   // Auto-select default category ("Offentligt" or first)
   useEffect(() => {
@@ -615,6 +630,9 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
           coverImageKey: coverKey,
           galleryImageKeys: galleryKeys,
         });
+        if (authorName.trim() && authorName.trim() !== authorAlias) {
+          await setAlias.mutateAsync(authorName.trim());
+        }
         toast.success("Utkast sparat!");
       } else {
         const newId = await createPost.mutateAsync({
@@ -628,6 +646,9 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
           coverImageKey: coverKey,
           galleryImageKeys: galleryKeys,
         });
+        if (authorName.trim() && authorName.trim() !== authorAlias) {
+          await setAlias.mutateAsync(authorName.trim());
+        }
         toast.success("Utkast sparat!");
         onNavigate({ type: "edit", postId: newId });
       }
@@ -668,6 +689,9 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
         });
       }
       await publishPost.mutateAsync(targetId!);
+      if (authorName.trim() && authorName.trim() !== authorAlias) {
+        await setAlias.mutateAsync(authorName.trim());
+      }
       toast.success("Publicerat!");
       onNavigate({ type: "my-posts" });
     } catch (err: unknown) {
@@ -734,6 +758,23 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
             placeholder="Ge ditt inlägg en rubrik…"
             className="text-lg font-display font-semibold bg-card h-12"
           />
+        </div>
+
+        {/* Author name field */}
+        <div className="space-y-2">
+          <Label className="font-body font-semibold">Författarnamn</Label>
+          <Input
+            data-ocid="post.author_name.input"
+            value={authorName}
+            onChange={(e) => setAuthorName(e.target.value)}
+            placeholder="Ditt namn eller alias..."
+            className="font-body h-10 bg-card"
+          />
+          {!authorAlias && authorName.trim() && (
+            <p className="text-xs text-muted-foreground font-body">
+              Namnet sparas i din profil när du publicerar.
+            </p>
+          )}
         </div>
 
         {/* Category */}

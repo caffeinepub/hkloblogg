@@ -1,6 +1,12 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -15,8 +21,11 @@ import {
   Bell,
   BookOpen,
   Calendar,
+  Check,
+  ClipboardCopy,
   Globe,
   Home,
+  Loader2,
   LogOut,
   Menu,
   PenSquare,
@@ -27,6 +36,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import React, { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import type { Post } from "./backend.d";
 import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
@@ -35,6 +45,8 @@ import {
   useInitDefaultCategories,
   usePublishedPosts,
   useSearchPosts,
+  useSetAlias,
+  useUserProfile,
 } from "./hooks/useQueries";
 import AdminPanel from "./pages/AdminPanel";
 import Discover from "./pages/Discover";
@@ -151,6 +163,175 @@ function EmptyState() {
         Bli den första att dela din historia!
       </p>
     </motion.div>
+  );
+}
+
+// ─── Profile Dropdown ────────────────────────────────────────────────────────
+function ProfileDropdown({ principal }: { principal: string }) {
+  const principalObj = React.useMemo(() => {
+    try {
+      // We pass the Principal object from identity directly
+      return null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Use identity's principal directly via the hook
+  const { identity } = useInternetIdentity();
+  const principalId = identity?.getPrincipal() ?? null;
+
+  const { data: profile } = useUserProfile(principalId);
+  const setAlias = useSetAlias();
+
+  const [aliasInput, setAliasInput] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  // Sync alias input when profile loads
+  useEffect(() => {
+    if (profile?.alias) {
+      setAliasInput(profile.alias);
+    } else {
+      // Try localStorage fallback
+      const stored = localStorage.getItem("hklo_alias");
+      if (stored) setAliasInput(stored);
+    }
+  }, [profile]);
+
+  const displayName =
+    profile?.alias ||
+    localStorage.getItem("hklo_alias") ||
+    `${principal.slice(0, 8)}…`;
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(principal);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveAlias = async () => {
+    const trimmed = aliasInput.trim();
+    if (!trimmed) return;
+    try {
+      await setAlias.mutateAsync(trimmed);
+      toast.success("Alias sparat!");
+    } catch {
+      toast.error("Kunde inte spara alias");
+    }
+  };
+
+  // Suppress unused variable warning
+  void principalObj;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          data-ocid="nav.profile.button"
+          className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-accent rounded-lg text-xs font-body text-foreground/70 hover:bg-accent/80 transition-colors"
+        >
+          <User className="w-3.5 h-3.5 shrink-0" />
+          <span className="max-w-[100px] truncate">{displayName}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        data-ocid="profile.dropdown_menu"
+        align="end"
+        sideOffset={8}
+        className="w-80 p-0 overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="bg-accent/40 px-4 py-3 border-b border-border">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+              <User className="w-4.5 h-4.5 text-primary" />
+            </div>
+            <div>
+              <p className="font-display font-bold text-sm text-foreground">
+                Min Profil
+              </p>
+              <p className="font-body text-xs text-muted-foreground">
+                Hantera dina uppgifter
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Principal ID */}
+          <div className="space-y-1.5">
+            <Label className="font-body text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Principal ID
+            </Label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 bg-muted rounded-lg px-3 py-2 overflow-hidden">
+                <p className="font-mono text-xs text-foreground/80 break-all leading-relaxed">
+                  {principal}
+                </p>
+              </div>
+              <button
+                type="button"
+                data-ocid="profile.principal.copy_button"
+                onClick={handleCopy}
+                className="shrink-0 p-2 rounded-lg bg-muted hover:bg-accent transition-colors"
+                aria-label="Kopiera Principal ID"
+              >
+                {copied ? (
+                  <Check className="w-3.5 h-3.5 text-green-600" />
+                ) : (
+                  <ClipboardCopy className="w-3.5 h-3.5 text-muted-foreground" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-border" />
+
+          {/* Alias */}
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="alias-input"
+              className="font-body text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+            >
+              Alias
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="alias-input"
+                data-ocid="profile.alias.input"
+                value={aliasInput}
+                onChange={(e) => setAliasInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveAlias();
+                }}
+                placeholder="Ditt alias…"
+                className="font-body text-sm h-9"
+              />
+              <Button
+                data-ocid="profile.alias.save_button"
+                size="sm"
+                onClick={handleSaveAlias}
+                disabled={setAlias.isPending || !aliasInput.trim()}
+                className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-3"
+              >
+                {setAlias.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  "Spara"
+                )}
+              </Button>
+            </div>
+            <p className="font-body text-xs text-muted-foreground">
+              Visas som författarnamn på dina inlägg.
+            </p>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -609,14 +790,9 @@ function AppInner() {
               </button>
             )}
 
-            {isLoggedIn ? (
+            {isLoggedIn && principal ? (
               <div className="flex items-center gap-2">
-                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-accent rounded-lg text-xs font-body text-foreground/70">
-                  <User className="w-3.5 h-3.5" />
-                  <span className="max-w-[100px] truncate">
-                    {principal?.slice(0, 8)}…
-                  </span>
-                </div>
+                <ProfileDropdown principal={principal} />
                 <Button
                   data-ocid="nav.logout.button"
                   variant="ghost"
@@ -686,6 +862,16 @@ function AppInner() {
                     {link.label}
                   </button>
                 ))}
+                {isLoggedIn && principal && (
+                  <div className="px-3 py-2 border-t border-border mt-1">
+                    <p className="text-xs font-body text-muted-foreground mb-1">
+                      Inloggad som
+                    </p>
+                    <p className="font-mono text-xs text-foreground/70 break-all">
+                      {principal}
+                    </p>
+                  </div>
+                )}
                 {isLoggedIn && (
                   <button
                     type="button"

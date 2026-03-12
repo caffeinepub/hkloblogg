@@ -192,7 +192,9 @@ export function InternetIdentityProvider({
       currentIdentity instanceof DelegationIdentity &&
       isDelegationValid(currentIdentity.getDelegation())
     ) {
-      setErrorMessage("User is already authenticated");
+      // Already authenticated — restore the success state instead of erroring
+      setIdentity(currentIdentity);
+      setStatus("success");
       return;
     }
 
@@ -241,22 +243,28 @@ export function InternetIdentityProvider({
           existingClient = await createAuthClient(createOptions);
           if (cancelled) return;
           setAuthClient(existingClient);
+          // Effect will re-run with the new authClient; stop here.
+          return;
         }
         const isAuthenticated = await existingClient.isAuthenticated();
         if (cancelled) return;
         if (isAuthenticated) {
           const loadedIdentity = existingClient.getIdentity();
           setIdentity(loadedIdentity);
+          // Restore success state so the app knows the user is logged in
+          setStatus("success");
+        } else {
+          setStatus("idle");
         }
       } catch (unknownError) {
-        setStatus("loginError");
-        setError(
-          unknownError instanceof Error
-            ? unknownError
-            : new Error("Initialization failed"),
-        );
-      } finally {
-        if (!cancelled) setStatus("idle");
+        if (!cancelled) {
+          setStatus("loginError");
+          setError(
+            unknownError instanceof Error
+              ? unknownError
+              : new Error("Initialization failed"),
+          );
+        }
       }
     })();
     return () => {

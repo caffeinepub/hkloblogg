@@ -1,7 +1,7 @@
 import type { Principal } from "@icp-sdk/core/principal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import type { AccessLevel, Category, Post } from "../backend.d";
+import type { AccessLevel, Category, Post, UserProfile } from "../backend.d";
 import { useActor } from "./useActor";
 
 export function useInitDefaultCategories() {
@@ -247,10 +247,32 @@ export function usePublishPost() {
 
 export function useSetAlias() {
   const { actor } = useActor();
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (alias: string) => {
       if (!actor) throw new Error("Not connected");
       return actor.setAlias(alias);
     },
+    onSuccess: (_data, alias) => {
+      qc.invalidateQueries({ queryKey: ["userProfile"] });
+      // Also update published posts cache since alias changed
+      qc.invalidateQueries({ queryKey: ["publishedPosts"] });
+      qc.invalidateQueries({ queryKey: ["postsByAuthor"] });
+      // Store alias locally for quick access
+      localStorage.setItem("hklo_alias", alias);
+    },
+  });
+}
+
+export function useUserProfile(principal: Principal | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<UserProfile | null>({
+    queryKey: ["userProfile", principal?.toString()],
+    queryFn: async () => {
+      if (!actor || !principal) return null;
+      const result = await actor.getUserProfile(principal);
+      return result.length > 0 ? (result[0] as UserProfile) : null;
+    },
+    enabled: !!actor && !isFetching && !!principal,
   });
 }

@@ -13,11 +13,27 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookOpen, Edit, Loader2, PenSquare, Send, Trash2 } from "lucide-react";
+import {
+  BookOpen,
+  Edit,
+  Loader2,
+  PenSquare,
+  Send,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { Post } from "../backend.d";
+import MyPostsFilterPanel, {
+  type PostFilters,
+  EMPTY_FILTERS,
+  countActiveFilters,
+} from "../components/MyPostsFilterPanel";
+import { useCommentsForPosts } from "../hooks/useCommentsForPosts";
 import {
+  useCategories,
   useDeletePost,
   usePostsByAuthor,
   usePublishPost,
@@ -185,6 +201,82 @@ interface MyPostsProps {
 
 export default function MyPosts({ onNavigate }: MyPostsProps) {
   const { data: posts = [], isLoading } = usePostsByAuthor();
+  const { data: categories = [] } = useCategories();
+
+  const [filters, setFilters] = useState<PostFilters>(EMPTY_FILTERS);
+
+  const aliasFilterActive = filters.aliasQuery.trim().length > 0;
+  const postIds = useMemo(() => posts.map((p) => p.id), [posts]);
+  const { data: commentsMap = {} } = useCommentsForPosts(
+    postIds,
+    aliasFilterActive,
+  );
+
+  const activeCount = countActiveFilters(filters);
+
+  const patchFilters = (patch: Partial<PostFilters>) =>
+    setFilters((prev) => ({ ...prev, ...patch }));
+
+  const filteredPosts = useMemo(() => {
+    if (activeCount === 0) return posts;
+
+    return posts.filter((post) => {
+      // OR logic: include post if ANY active filter matches
+
+      // --- Alias filter ---
+      if (aliasFilterActive) {
+        const q = filters.aliasQuery.trim().toLowerCase();
+        const postComments = commentsMap[post.id.toString()] ?? [];
+        const hasMatch = postComments.some((c) =>
+          c.authorAlias.toLowerCase().includes(q),
+        );
+        if (hasMatch) return true;
+      }
+
+      // --- Category filter ---
+      if (filters.categoryId) {
+        if (String(post.categoryId) === filters.categoryId) return true;
+      }
+
+      // --- Access level filter ---
+      const postCategory = categories.find(
+        (c) => String(c.id) === String(post.categoryId),
+      );
+      if (filters.showRestricted && postCategory) {
+        if ("Restricted" in postCategory.accessLevel) return true;
+      }
+      if (filters.showPrivate && postCategory) {
+        if ("Private" in postCategory.accessLevel) return true;
+      }
+
+      // --- Date range filter ---
+      const dateFilterActive = filters.dateFrom || filters.dateTo;
+      if (dateFilterActive) {
+        const postMs = Number(post.createdAt) / 1_000_000;
+        const postDate = new Date(postMs);
+        let inRange = true;
+        if (filters.dateFrom) {
+          inRange = inRange && postDate >= new Date(filters.dateFrom);
+        }
+        if (filters.dateTo) {
+          const to = new Date(filters.dateTo);
+          to.setHours(23, 59, 59, 999);
+          inRange = inRange && postDate <= to;
+        }
+        if (inRange) return true;
+      }
+
+      // --- Min likes filter ---
+      if (filters.minLikes !== "") {
+        const min = Number(filters.minLikes);
+        if (!Number.isNaN(min) && post.reactions.length >= min) return true;
+      }
+
+      return false;
+    });
+  }, [posts, filters, activeCount, aliasFilterActive, commentsMap, categories]);
+
+  const isFiltered = activeCount > 0;
 
   return (
     <motion.div
@@ -192,26 +284,51 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
       animate={{ opacity: 1 }}
       className="max-w-3xl mx-auto px-4 py-8"
     >
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-foreground">
             Mina inlägg
           </h1>
-          {posts.length > 0 && (
-            <p className="font-body text-sm text-muted-foreground mt-1">
-              {posts.length} inlägg totalt
-            </p>
-          )}
         </div>
-        <Button
-          data-ocid="posts.primary_button"
-          onClick={() => onNavigate({ type: "create" })}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 font-body"
-        >
-          <PenSquare className="w-4 h-4 mr-2" />
-          Skapa nytt
-        </Button>
+        <div className="flex items-center gap-2">
+          <MyPostsFilterPanel
+            filters={filters}
+            onChange={patchFilters}
+            onClear={() => setFilters(EMPTY_FILTERS)}
+            categories={categories}
+            activeCount={activeCount}
+          />
+          <Button
+            data-ocid="posts.primary_button"
+            onClick={() => onNavigate({ type: "create" })}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 font-body"
+          >
+            <PenSquare className="w-4 h-4 mr-2" />
+            Skapa nytt
+          </Button>
+        </div>
       </div>
+
+      {/* Stats row */}
+      {posts.length > 0 && (
+        <p className="font-body text-sm text-muted-foreground mb-6">
+          {isFiltered ? (
+            <>
+              Visar{" "}
+              <span className="text-foreground font-medium">
+                {filteredPosts.length}
+              </span>{" "}
+              av{" "}
+              <span className="text-foreground font-medium">
+                {posts.length}
+              </span>{" "}
+              inlägg
+            </>
+          ) : (
+            <>{posts.length} inlägg totalt</>
+          )}
+        </p>
+      )}
 
       {isLoading ? (
         <div data-ocid="posts.loading_state" className="space-y-4">
@@ -251,10 +368,36 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
             Skapa ditt första inlägg
           </Button>
         </motion.div>
+      ) : filteredPosts.length === 0 ? (
+        <motion.div
+          data-ocid="posts.empty_state"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-center justify-center py-16 text-center"
+        >
+          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+            <SlidersHorizontal className="w-7 h-7 text-muted-foreground" />
+          </div>
+          <h3 className="font-display text-lg font-bold text-foreground mb-2">
+            Inga inlägg matchar filtret
+          </h3>
+          <p className="font-body text-muted-foreground text-sm mb-5 max-w-xs">
+            Prova att ändra eller rensa filtren för att se fler inlägg.
+          </p>
+          <Button
+            data-ocid="posts.filter.delete_button"
+            variant="outline"
+            size="sm"
+            onClick={() => setFilters(EMPTY_FILTERS)}
+            className="font-body text-sm"
+          >
+            Rensa filter
+          </Button>
+        </motion.div>
       ) : (
         <AnimatePresence>
           <div className="space-y-4">
-            {posts.map((post, i) => (
+            {filteredPosts.map((post, i) => (
               <PostCard
                 key={String(post.id)}
                 post={post}

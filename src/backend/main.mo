@@ -2,12 +2,14 @@ import AccessControl "authorization/access-control";
 import MixinAuthorization "authorization/MixinAuthorization";
 import MixinBlobStorage "blob-storage/Mixin";
 import Map "mo:core/Map";
+
 import Array "mo:core/Array";
 import Text "mo:core/Text";
 import Time "mo:core/Time";
 import Principal "mo:core/Principal";
+import Nat "mo:core/Nat";
 
-persistent actor {
+actor {
 
   let accessControlState : AccessControl.AccessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
@@ -75,6 +77,18 @@ persistent actor {
     timestamp : Int;
   };
 
+  // ── Fas 5: Notification & Follow types ───────────────────────────────────────
+
+  public type Notification = {
+    id : Nat;
+    toPrincipal : Principal;
+    message : Text;
+    link : Text;
+    notifType : Text;
+    read : Bool;
+    timestamp : Int;
+  };
+
   var categories : [Category] = [];
   var nextCategoryId : Nat = 1;
   var posts : [PostInternal] = [];
@@ -88,6 +102,16 @@ persistent actor {
 
   // Fas 3: alias lookup for readers
   var readerAliasMap : Map.Map<Principal, Text> = Map.empty<Principal, Text>();
+
+  // Blocked users
+  var blockedUsers : Map.Map<Principal, Bool> = Map.empty<Principal, Bool>();
+
+  // Fas 5: Notifications
+  var notifications : [Notification] = [];
+  var nextNotifId : Nat = 1;
+
+  // Fas 5: Follows -- array of (follower, followee) pairs
+  var follows : [(Principal, Principal)] = [];
 
   let blockedWords : [Text] = [
     "kuk", "fitta", "hora", "javla", "fan", "skit", "idiot", "knull", "helvete",
@@ -121,6 +145,23 @@ persistent actor {
       coverImageKey = imgs.coverImageKey;
       galleryImageKeys = imgs.galleryImageKeys;
     };
+  };
+
+  // ── Fas 5: Internal notification helper ──────────────────────────────────────
+
+  func addNotification(toPrincipal : Principal, message : Text, link : Text, notifType : Text) {
+    if (toPrincipal.isAnonymous()) { return };
+    let id = nextNotifId;
+    nextNotifId += 1;
+    notifications := notifications.concat([{
+      id;
+      toPrincipal;
+      message;
+      link;
+      notifType;
+      read = false;
+      timestamp = Time.now();
+    }]);
   };
 
   // ── Default category seed ─────────────────────────────────────────────────────
@@ -164,7 +205,8 @@ persistent actor {
     id;
   };
 
-  public shared (_) func updateCategory(id : Nat, name : Text, description : Text, accessLevel : AccessLevel) : async Bool {
+  public shared ({ caller }) func updateCategory(id : Nat, name : Text, description : Text, accessLevel : AccessLevel) : async Bool {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
     switch (categories.findIndex(func(c : Category) : Bool = c.id == id)) {
       case (null) { false };
       case (?i) {
@@ -180,7 +222,16 @@ persistent actor {
     };
   };
 
-  public shared (_) func addReaderToCategory(categoryId : Nat, reader : Principal) : async Bool {
+
+  public shared ({ caller }) func deleteCategory(id : Nat) : async Bool {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
+    let sizeBefore = categories.size();
+    categories := categories.filter(func(c : Category) : Bool = c.id != id);
+    categories.size() < sizeBefore;
+  };
+
+  public shared ({ caller }) func addReaderToCategory(categoryId : Nat, reader : Principal) : async Bool {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
     switch (categories.findIndex(func(c : Category) : Bool = c.id == categoryId)) {
       case (null) { false };
       case (?i) {
@@ -199,7 +250,8 @@ persistent actor {
   };
 
   // Fas 3: Add reader with alias to a category
-  public shared (_) func addReaderAliasToCategory(categoryId : Nat, readerAlias : Text, reader : Principal) : async Bool {
+  public shared ({ caller }) func addReaderAliasToCategory(categoryId : Nat, readerAlias : Text, reader : Principal) : async Bool {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
     switch (categories.findIndex(func(c : Category) : Bool = c.id == categoryId)) {
       case (null) { false };
       case (?i) {
@@ -246,6 +298,9 @@ persistent actor {
   // ── Posts ────────────────────────────────────────────────────────────────────
 
   public shared ({ caller }) func createPost(title : Text, content : Text, categoryId : Nat) : async { #ok : Nat; #err : Text } {
+    if (blockedUsers.get(caller) != null) {
+      return #err("Ditt konto är blockerat. Du kan inte skapa inlägg.");
+    };
     switch (checkBlocked(title # " " # content)) {
       case (?word) {
         moderationLogs := moderationLogs.concat([{
@@ -254,7 +309,7 @@ persistent actor {
           reason = "Blocked word: " # word; timestamp = Time.now();
         }]);
         nextLogId += 1;
-        return #err("Innehallet innehaller otillatna ord.");
+        return #err("Innehållet innehåller otillåtna ord.");
       };
       case (null) {};
     };
@@ -275,8 +330,11 @@ persistent actor {
   };
 
   public shared ({ caller }) func updatePost(postId : Nat, title : Text, content : Text, categoryId : Nat) : async { #ok : Bool; #err : Text } {
+    if (blockedUsers.get(caller) != null and not AccessControl.isAdmin(accessControlState, caller)) {
+      return #err("Ditt konto är blockerat.");
+    };
     switch (checkBlocked(title # " " # content)) {
-      case (?word) { return #err("Innehallet innehaller otillatna ord.") };
+      case (?_word) { return #err("Innehållet innehåller otillåtna ord.") };
       case (null) {};
     };
     switch (posts.findIndex(func(p : PostInternal) : Bool = p.id == postId)) {
@@ -340,6 +398,20 @@ persistent actor {
           else { posts[j] };
         });
         postUpdatedAt.add(postId, Time.now());
+        // Fas 5: Notify all followers of the author
+        let author = old.authorPrincipal;
+        let authorAlias = old.authorAlias;
+        let postLink = "/post/" # postId.toText();
+        for ((follower, followee) in follows.vals()) {
+          if (Principal.equal(followee, author)) {
+            addNotification(
+              follower,
+              authorAlias # " publicerade ett nytt inlägg: " # old.title,
+              postLink,
+              "new_post"
+            );
+          };
+        };
         true;
       };
     };
@@ -361,6 +433,12 @@ persistent actor {
   public query ({ caller }) func getPostsByAuthor() : async [Post] {
     posts
       .filter(func(p : PostInternal) : Bool = Principal.equal(p.authorPrincipal, caller))
+      .map(enrichPost);
+  };
+
+  public query func getPostsByPrincipal(principalId : Principal) : async [Post] {
+    posts
+      .filter(func(p : PostInternal) : Bool = Principal.equal(p.authorPrincipal, principalId) and p.status == #Published)
       .map(enrichPost);
   };
 
@@ -464,5 +542,139 @@ persistent actor {
 
   public query func containsBlockedContent(text : Text) : async ?Text {
     checkBlocked(text);
+  };
+
+  // ── User blocking ──────────────────────────────────────────────────────────────
+
+  public shared ({ caller }) func blockUser(target : Principal) : async Bool {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
+    if (AccessControl.isAdmin(accessControlState, target)) { return false }; // can't block admins
+    blockedUsers.add(target, true);
+    let alias = switch (userProfiles.get(target)) {
+      case (?p) { p.alias };
+      case (null) { target.toText() };
+    };
+    moderationLogs := moderationLogs.concat([{
+      id = nextLogId; action = "block_user"; admin = caller; targetUser = ?target;
+      contentType = "user"; snippet = alias; reason = "Admin block"; timestamp = Time.now();
+    }]);
+    nextLogId += 1;
+    true;
+  };
+
+  public shared ({ caller }) func unblockUser(target : Principal) : async Bool {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
+    blockedUsers.remove(target);
+    let alias = switch (userProfiles.get(target)) {
+      case (?p) { p.alias };
+      case (null) { target.toText() };
+    };
+    moderationLogs := moderationLogs.concat([{
+      id = nextLogId; action = "unblock_user"; admin = caller; targetUser = ?target;
+      contentType = "user"; snippet = alias; reason = "Admin unblock"; timestamp = Time.now();
+    }]);
+    nextLogId += 1;
+    true;
+  };
+
+  public query ({ caller }) func getBlockedUsers() : async [Principal] {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return [] };
+    var result : [Principal] = [];
+    for ((p, _) in blockedUsers.entries()) {
+      result := result.concat([p]);
+    };
+    result;
+  };
+
+  public query func isUserBlocked(user : Principal) : async Bool {
+    blockedUsers.get(user) != null;
+  };
+
+  // ── Fas 5: Notifications ───────────────────────────────────────────────────────
+
+  public shared ({ caller }) func sendNotification(toPrincipal : Principal, message : Text, link : Text, notifType : Text) : async Bool {
+    addNotification(toPrincipal, message, link, notifType);
+    true;
+  };
+
+  public query ({ caller }) func getUnreadNotifications() : async [Notification] {
+    notifications.filter(func(n : Notification) : Bool =
+      Principal.equal(n.toPrincipal, caller) and not n.read
+    );
+  };
+
+  public query ({ caller }) func getAllNotifications() : async [Notification] {
+    notifications.filter(func(n : Notification) : Bool =
+      Principal.equal(n.toPrincipal, caller)
+    );
+  };
+
+  public shared ({ caller }) func markNotificationsRead() : async Bool {
+    notifications := notifications.map(func(n : Notification) : Notification {
+      if (Principal.equal(n.toPrincipal, caller)) {
+        { id = n.id; toPrincipal = n.toPrincipal; message = n.message;
+          link = n.link; notifType = n.notifType; read = true; timestamp = n.timestamp }
+      } else { n };
+    });
+    true;
+  };
+
+  // ── Fas 5: Follow system ───────────────────────────────────────────────────────
+
+  public shared ({ caller }) func followUser(followeePrincipal : Principal) : async Bool {
+    if (caller.isAnonymous()) { return false };
+    if (Principal.equal(caller, followeePrincipal)) { return false };
+    // Check if already following
+    let alreadyFollowing = follows.find(func((f, fe) : (Principal, Principal)) : Bool =
+      Principal.equal(f, caller) and Principal.equal(fe, followeePrincipal)
+    ) != null;
+    if (alreadyFollowing) { return true };
+    follows := follows.concat([(caller, followeePrincipal)]);
+    // Send notification to followee
+    let followerAlias = switch (userProfiles.get(caller)) {
+      case (?p) { p.alias };
+      case (null) { caller.toText() };
+    };
+    addNotification(
+      followeePrincipal,
+      followerAlias # " började följa dig!",
+      "/profile/" # caller.toText(),
+      "follow"
+    );
+    true;
+  };
+
+  public shared ({ caller }) func unfollowUser(followeePrincipal : Principal) : async Bool {
+    if (caller.isAnonymous()) { return false };
+    follows := follows.filter(func((f, fe) : (Principal, Principal)) : Bool =
+      not (Principal.equal(f, caller) and Principal.equal(fe, followeePrincipal))
+    );
+    true;
+  };
+
+  public query func getFollowers(principalId : Principal) : async [Principal] {
+    var result : [Principal] = [];
+    for ((follower, followee) in follows.vals()) {
+      if (Principal.equal(followee, principalId)) {
+        result := result.concat([follower]);
+      };
+    };
+    result;
+  };
+
+  public query func getFollowing(principalId : Principal) : async [Principal] {
+    var result : [Principal] = [];
+    for ((follower, followee) in follows.vals()) {
+      if (Principal.equal(follower, principalId)) {
+        result := result.concat([followee]);
+      };
+    };
+    result;
+  };
+
+  public query ({ caller }) func isFollowing(followeePrincipal : Principal) : async Bool {
+    follows.find(func((f, fe) : (Principal, Principal)) : Bool =
+      Principal.equal(f, caller) and Principal.equal(fe, followeePrincipal)
+    ) != null;
   };
 };

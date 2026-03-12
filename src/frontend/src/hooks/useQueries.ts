@@ -1,7 +1,14 @@
 import type { Principal } from "@icp-sdk/core/principal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import type { AccessLevel, Category, Post, UserProfile } from "../backend.d";
+import type {
+  AccessLevel,
+  Category,
+  ModerationLog,
+  Notification,
+  Post,
+  UserProfile,
+} from "../backend.d";
 import { useActor } from "./useActor";
 
 export function useInitDefaultCategories() {
@@ -90,6 +97,44 @@ export function useCreateCategory() {
   });
 }
 
+export function useUpdateCategory() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      name,
+      description,
+      accessLevel,
+    }: {
+      id: bigint;
+      name: string;
+      description: string;
+      accessLevel: AccessLevel;
+    }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.updateCategory(id, name, description, accessLevel);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+}
+
+export function useDeleteCategory() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.deleteCategory(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+}
+
 export function useAddReaderAlias() {
   const { actor } = useActor();
   const qc = useQueryClient();
@@ -158,6 +203,8 @@ export function useCreatePost() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["postsByAuthor"] });
       qc.invalidateQueries({ queryKey: ["publishedPosts"] });
+      qc.invalidateQueries({ queryKey: ["discoverPosts"] });
+      qc.invalidateQueries({ queryKey: ["allPosts"] });
     },
   });
 }
@@ -186,6 +233,8 @@ export function useUpdatePost() {
       qc.invalidateQueries({ queryKey: ["postsByAuthor"] });
       qc.invalidateQueries({ queryKey: ["post", vars.postId.toString()] });
       qc.invalidateQueries({ queryKey: ["publishedPosts"] });
+      qc.invalidateQueries({ queryKey: ["discoverPosts"] });
+      qc.invalidateQueries({ queryKey: ["allPosts"] });
     },
   });
 }
@@ -210,6 +259,7 @@ export function useUpdatePostImages() {
       qc.invalidateQueries({ queryKey: ["post", vars.postId.toString()] });
       qc.invalidateQueries({ queryKey: ["postsByAuthor"] });
       qc.invalidateQueries({ queryKey: ["publishedPosts"] });
+      qc.invalidateQueries({ queryKey: ["discoverPosts"] });
     },
   });
 }
@@ -225,6 +275,8 @@ export function useDeletePost() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["postsByAuthor"] });
       qc.invalidateQueries({ queryKey: ["publishedPosts"] });
+      qc.invalidateQueries({ queryKey: ["discoverPosts"] });
+      qc.invalidateQueries({ queryKey: ["allPosts"] });
     },
   });
 }
@@ -241,6 +293,8 @@ export function usePublishPost() {
       qc.invalidateQueries({ queryKey: ["postsByAuthor"] });
       qc.invalidateQueries({ queryKey: ["post", postId.toString()] });
       qc.invalidateQueries({ queryKey: ["publishedPosts"] });
+      qc.invalidateQueries({ queryKey: ["discoverPosts"] });
+      qc.invalidateQueries({ queryKey: ["allPosts"] });
     },
   });
 }
@@ -255,10 +309,8 @@ export function useSetAlias() {
     },
     onSuccess: (_data, alias) => {
       qc.invalidateQueries({ queryKey: ["userProfile"] });
-      // Also update published posts cache since alias changed
       qc.invalidateQueries({ queryKey: ["publishedPosts"] });
       qc.invalidateQueries({ queryKey: ["postsByAuthor"] });
-      // Store alias locally for quick access
       localStorage.setItem("hklo_alias", alias);
     },
   });
@@ -274,5 +326,226 @@ export function useUserProfile(principal: Principal | null) {
       return result.length > 0 ? (result[0] as UserProfile) : null;
     },
     enabled: !!actor && !isFetching && !!principal,
+  });
+}
+
+export function useAllUsers() {
+  const { actor, isFetching } = useActor();
+  return useQuery<UserProfile[]>({
+    queryKey: ["allUsers"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getAllUsers() as Promise<UserProfile[]>;
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useBlockedUsers() {
+  const { actor, isFetching } = useActor();
+  return useQuery<Principal[]>({
+    queryKey: ["blockedUsers"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getBlockedUsers() as Promise<Principal[]>;
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useBlockUser() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (principal: Principal) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.blockUser(principal);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["allUsers"] });
+      qc.invalidateQueries({ queryKey: ["blockedUsers"] });
+    },
+  });
+}
+
+export function useUnblockUser() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (principal: Principal) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.unblockUser(principal);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["allUsers"] });
+      qc.invalidateQueries({ queryKey: ["blockedUsers"] });
+    },
+  });
+}
+
+export function useUpdateUserAlias() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      principal,
+      alias,
+    }: { principal: Principal; alias: string }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.updateUserAliasAdmin(principal, alias);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["allUsers"] });
+      qc.invalidateQueries({ queryKey: ["moderationLogs"] });
+    },
+  });
+}
+
+export function useModerationLogs() {
+  const { actor, isFetching } = useActor();
+  return useQuery<ModerationLog[]>({
+    queryKey: ["moderationLogs"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getModerationLogs() as Promise<ModerationLog[]>;
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useAllPosts() {
+  const { actor, isFetching } = useActor();
+  return useQuery<Post[]>({
+    queryKey: ["allPosts"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getPublishedPosts() as Promise<Post[]>;
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+// ─── Fas 5: Notifications ───────────────────────────────────────────────────────────
+
+export function useUnreadNotifications() {
+  const { actor, isFetching } = useActor();
+  return useQuery<Notification[]>({
+    queryKey: ["unreadNotifications"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getUnreadNotifications() as Promise<Notification[]>;
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useAllNotifications() {
+  const { actor, isFetching } = useActor();
+  return useQuery<Notification[]>({
+    queryKey: ["allNotifications"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getAllNotifications() as Promise<Notification[]>;
+    },
+    enabled: !!actor && !isFetching,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useMarkNotificationsRead() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!actor) throw new Error("Not connected");
+      return actor.markNotificationsRead();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["unreadNotifications"] });
+      qc.invalidateQueries({ queryKey: ["allNotifications"] });
+    },
+  });
+}
+
+// ─── Fas 5: Follow system ─────────────────────────────────────────────────────
+
+export function useFollowUser() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (followeePrincipal: Principal) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.followUser(followeePrincipal);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["followers"] });
+      qc.invalidateQueries({ queryKey: ["following"] });
+      qc.invalidateQueries({ queryKey: ["isFollowing"] });
+    },
+  });
+}
+
+export function useUnfollowUser() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (followeePrincipal: Principal) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.unfollowUser(followeePrincipal);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["followers"] });
+      qc.invalidateQueries({ queryKey: ["following"] });
+      qc.invalidateQueries({ queryKey: ["isFollowing"] });
+    },
+  });
+}
+
+export function useFollowers(principalId: Principal | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<Principal[]>({
+    queryKey: ["followers", principalId?.toString()],
+    queryFn: async () => {
+      if (!actor || !principalId) return [];
+      return actor.getFollowers(principalId) as Promise<Principal[]>;
+    },
+    enabled: !!actor && !isFetching && !!principalId,
+  });
+}
+
+export function useFollowing(principalId: Principal | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<Principal[]>({
+    queryKey: ["following", principalId?.toString()],
+    queryFn: async () => {
+      if (!actor || !principalId) return [];
+      return actor.getFollowing(principalId) as Promise<Principal[]>;
+    },
+    enabled: !!actor && !isFetching && !!principalId,
+  });
+}
+
+export function useIsFollowing(followeePrincipal: Principal | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<boolean>({
+    queryKey: ["isFollowing", followeePrincipal?.toString()],
+    queryFn: async () => {
+      if (!actor || !followeePrincipal) return false;
+      return actor.isFollowing(followeePrincipal) as Promise<boolean>;
+    },
+    enabled: !!actor && !isFetching && !!followeePrincipal,
+  });
+}
+
+export function usePostsByPrincipal(principalId: Principal | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<Post[]>({
+    queryKey: ["postsByPrincipal", principalId?.toString()],
+    queryFn: async () => {
+      if (!actor || !principalId) return [];
+      return actor.getPostsByPrincipal(principalId) as Promise<Post[]>;
+    },
+    enabled: !!actor && !isFetching && !!principalId,
   });
 }

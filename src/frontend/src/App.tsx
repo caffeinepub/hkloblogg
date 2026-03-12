@@ -38,10 +38,13 @@ import { AnimatePresence, motion } from "motion/react";
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Post } from "./backend.d";
+import NotificationBell from "./components/NotificationBell";
 import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import {
   useCategories,
+  useFollowers,
+  useFollowing,
   useInitDefaultCategories,
   usePublishedPosts,
   useSearchPosts,
@@ -53,6 +56,7 @@ import Discover from "./pages/Discover";
 import MyPosts from "./pages/MyPosts";
 import PostEditor from "./pages/PostEditor";
 import PostView from "./pages/PostView";
+import UserProfile from "./pages/UserProfile";
 import type { AppView, NavigateFn } from "./types";
 
 class ErrorBoundary extends React.Component<
@@ -137,9 +141,19 @@ function PostCard({
         <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center text-xs font-bold text-foreground">
           {post.authorAlias.charAt(0).toUpperCase()}
         </div>
-        <span className="text-xs font-body text-muted-foreground">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigate({
+              type: "profile",
+              principalId: post.authorPrincipal.toString(),
+            });
+          }}
+          className="text-xs font-body text-muted-foreground hover:text-primary transition-colors"
+        >
           {post.authorAlias}
-        </span>
+        </button>
       </div>
     </motion.article>
   );
@@ -182,6 +196,8 @@ function ProfileDropdown({ principal }: { principal: string }) {
   const principalId = identity?.getPrincipal() ?? null;
 
   const { data: profile } = useUserProfile(principalId);
+  const { data: followers = [] } = useFollowers(principalId);
+  const { data: following = [] } = useFollowing(principalId);
   const setAlias = useSetAlias();
 
   const [aliasInput, setAliasInput] = useState("");
@@ -254,7 +270,7 @@ function ProfileDropdown({ principal }: { principal: string }) {
                 Min Profil
               </p>
               <p className="font-body text-xs text-muted-foreground">
-                Hantera dina uppgifter
+                {followers.length} följare · {following.length} följda
               </p>
             </div>
           </div>
@@ -782,16 +798,7 @@ function AppInner() {
 
           {/* Right side */}
           <div className="flex items-center gap-2 shrink-0">
-            {isLoggedIn && (
-              <button
-                type="button"
-                data-ocid="nav.notifications.button"
-                className="relative p-2 rounded-lg hover:bg-accent/50 transition-colors"
-                aria-label="Notifikationer"
-              >
-                <Bell className="w-5 h-5 text-foreground/70" />
-              </button>
-            )}
+            {isLoggedIn && <NotificationBell onNavigate={navigate} />}
 
             {isLoggedIn && principal ? (
               <div className="flex items-center gap-2">
@@ -924,6 +931,11 @@ function AppInner() {
         {view.type === "admin" && (
           <main key="admin" className="flex-1">
             <AdminPanel onNavigate={navigate} />
+          </main>
+        )}
+        {view.type === "profile" && (
+          <main key={`profile-${view.principalId}`} className="flex-1">
+            <UserProfile principalId={view.principalId} onNavigate={navigate} />
           </main>
         )}
       </AnimatePresence>

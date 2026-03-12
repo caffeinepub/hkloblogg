@@ -47,10 +47,21 @@ export interface ModerationLog {
   timestamp: bigint;
 }
 
+export interface Notification {
+  id: bigint;
+  toPrincipal: Principal;
+  message: string;
+  link: string;
+  notifType: string;
+  read: boolean;
+  timestamp: bigint;
+}
+
 export interface backendInterface {
   initDefaultCategories: ActorMethod<[], undefined>;
   createCategory: ActorMethod<[string, string, AccessLevel], bigint>;
   updateCategory: ActorMethod<[bigint, string, string, AccessLevel], boolean>;
+  deleteCategory: ActorMethod<[bigint], boolean>;
   addReaderToCategory: ActorMethod<[bigint, Principal], boolean>;
   addReaderAliasToCategory: ActorMethod<[bigint, string, Principal], boolean>;
   getReaderAliases: ActorMethod<[Principal[]], [Principal, string][]>;
@@ -64,6 +75,7 @@ export interface backendInterface {
   getPublishedPosts: ActorMethod<[], Post[]>;
   getPostById: ActorMethod<[bigint], [] | [Post]>;
   getPostsByAuthor: ActorMethod<[], Post[]>;
+  getPostsByPrincipal: ActorMethod<[Principal], Post[]>;
   getPostsForUser: ActorMethod<[], Post[]>;
   getDiscoverPosts: ActorMethod<[], Post[]>;
   searchPosts: ActorMethod<[string], Post[]>;
@@ -73,6 +85,20 @@ export interface backendInterface {
   getAllUsers: ActorMethod<[], UserProfile[]>;
   getModerationLogs: ActorMethod<[], ModerationLog[]>;
   containsBlockedContent: ActorMethod<[string], [] | [string]>;
+  blockUser: ActorMethod<[Principal], boolean>;
+  unblockUser: ActorMethod<[Principal], boolean>;
+  getBlockedUsers: ActorMethod<[], Principal[]>;
+  isUserBlocked: ActorMethod<[Principal], boolean>;
+  // Fas 5
+  sendNotification: ActorMethod<[Principal, string, string, string], boolean>;
+  getUnreadNotifications: ActorMethod<[], Notification[]>;
+  getAllNotifications: ActorMethod<[], Notification[]>;
+  markNotificationsRead: ActorMethod<[], boolean>;
+  followUser: ActorMethod<[Principal], boolean>;
+  unfollowUser: ActorMethod<[Principal], boolean>;
+  getFollowers: ActorMethod<[Principal], Principal[]>;
+  getFollowing: ActorMethod<[Principal], Principal[]>;
+  isFollowing: ActorMethod<[Principal], boolean>;
   _initializeAccessControlWithSecret: ActorMethod<[string], undefined>;
 }
 

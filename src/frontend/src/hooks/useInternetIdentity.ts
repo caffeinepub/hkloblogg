@@ -1,36 +1,3 @@
-/**
- * ================================================================
- * CRITICAL FILE -- DO NOT MODIFY WITHOUT READING AUTH_RULES.md
- * ================================================================
- *
- * RULES (breaking any of these will cause login/session bugs):
- *
- * 1. authClient MUST be useRef, NEVER useState.
- *    Reason: useState triggers re-renders which re-run useEffect,
- *    creating an infinite loop that destroys session state.
- *
- * 2. The useEffect MUST NOT have authClient or createOptions in its
- *    dependency array. It must run EXACTLY ONCE on mount.
- *    Reason: Any re-run resets the client and loses the session.
- *
- * 3. There MUST be NO finally block in the useEffect.
- *    Reason: finally { setStatus("idle") } always runs and overwrites
- *    "success" even when a valid session was found.
- *
- * 4. Status MUST be set explicitly:
- *    - "success" when a valid saved session is found
- *    - "idle" when no session is found
- *    Never rely on finally to set status.
- *
- * 5. login() MUST silently sync state if already authenticated.
- *    NEVER throw/setError when the user is already logged in.
- *    Reason: Page reloads can call login() while session is valid.
- *
- * HISTORY: This file was the root cause of login failures in versions
- * v11-v49. Each regression was caused by reverting to an old version
- * of this file. See AUTH_RULES.md for full history.
- * ================================================================
- */
 import {
   AuthClient,
   type AuthClientCreateOptions,
@@ -38,6 +5,21 @@ import {
 } from "@dfinity/auth-client";
 import type { Identity } from "@icp-sdk/core/agent";
 import { DelegationIdentity, isDelegationValid } from "@icp-sdk/core/identity";
+/**
+ * ⚠️ KRITISK FIL – ÄndRA INTE utan att läsa AUTH_RULES.md
+ *
+ * REGLER SOM ALDRIG FÅR BRYTAS:
+ * 1. authClient MÅSTE vara useRef – ALDRIG useState
+ *    Varför: useState triggar useEffect att köra om sig och skapar en oändlig loop
+ * 2. finally-blocket MÅSTE vara borttaget
+ *    Varför: finally sätter alltid "idle" sist och skriver över "success", vilket döljer inlägg och menyer
+ * 3. setStatus("success") MÅSTE anropas explicit när en sparad session hittas
+ *    Varför: annars förblir status "idle" efter sidladdning och isLoggedIn = false
+ * 4. login() MÅSTE synka state om användaren redan är autentiserad – ALDRIG sätta loginError
+ *    Varför: om login() sätter fel istället för att synka state fungerar inte inloggningsknappen
+ * 5. useEffect dependency-array MÅSTE vara tom [] eller INTE innehålla authClient
+ *    Varför: authClient i dependency-array är orsaken till den oändliga loopen
+ */
 import {
   type PropsWithChildren,
   type ReactNode,
@@ -121,9 +103,8 @@ export function InternetIdentityProvider({
   children: ReactNode;
   createOptions?: AuthClientCreateOptions;
 }>) {
-  // RULE 1: authClient MUST be useRef, never useState.
+  // REGEL 1: authClient MÅSTE vara useRef – ALDRIG useState
   const authClientRef = useRef<AuthClient | undefined>(undefined);
-  // Capture createOptions in a ref so useEffect can use it without adding it to deps.
   const createOptionsRef = useRef(createOptions);
 
   const [identity, setIdentity] = useState<Identity | undefined>(undefined);
@@ -163,7 +144,7 @@ export function InternetIdentityProvider({
     }
 
     const currentIdentity = client.getIdentity();
-    // RULE 5: If already authenticated, sync state silently. NEVER throw an error.
+    // REGEL 4: Om redan autentiserad, synka state istället för att sätta loginError
     if (
       !currentIdentity.getPrincipal().isAnonymous() &&
       currentIdentity instanceof DelegationIdentity &&
@@ -210,9 +191,9 @@ export function InternetIdentityProvider({
       });
   }, [setErrorMessage]);
 
-  // RULE 2: Empty dependency array -- runs EXACTLY ONCE on mount.
-  // RULE 3: NO finally block.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally runs once on mount only
+  // REGEL 5: Tom dependency-array [] – körs exakt EN gång vid mount
+  // REGEL 2: Inget finally-block
+  // REGEL 3: setStatus("success") sätts explicit om session hittas
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -221,13 +202,14 @@ export function InternetIdentityProvider({
         const client = await createAuthClient(createOptionsRef.current);
         if (cancelled) return;
         authClientRef.current = client;
+
         const isAuthenticated = await client.isAuthenticated();
         if (cancelled) return;
-        // RULE 4: Explicitly set "success" or "idle" -- never rely on finally.
+
         if (isAuthenticated) {
           const loadedIdentity = client.getIdentity();
           setIdentity(loadedIdentity);
-          setStatus("success");
+          setStatus("success"); // REGEL 3: explicit "success"
         } else {
           setStatus("idle");
         }
@@ -241,12 +223,12 @@ export function InternetIdentityProvider({
           );
         }
       }
-      // NO finally block here -- see RULE 3
+      // REGEL 2: INGET finally-block här
     })();
     return () => {
       cancelled = true;
     };
-  }, []); // RULE 2: empty deps -- run once only
+  }, []); // REGEL 5: Tom array
 
   const value = useMemo<ProviderValue>(
     () => ({

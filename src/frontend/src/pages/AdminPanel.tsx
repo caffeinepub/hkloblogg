@@ -76,6 +76,7 @@ import {
   useBlockUser,
   useBlockedUsers,
   useCategories,
+  useCheckIsAdmin,
   useCheckIsPrimaryAdmin,
   useCreateCategory,
   useDeleteCategory,
@@ -1141,11 +1142,47 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
 
 function SuperadminsTab() {
   const { data: isPrimaryAdmin = false } = useCheckIsPrimaryAdmin();
+  const { data: isAdmin = false } = useCheckIsAdmin();
   const { data: superAdmins = [], isLoading } = useGetSuperAdmins();
+  const { data: allUsers = [] } = useAllUsers();
   const addSuperAdmin = useAddSuperAdmin();
   const removeSuperAdmin = useRemoveSuperAdmin();
+  const [userSearch, setUserSearch] = useState("");
   const [alias, setAlias] = useState("");
   const [principalText, setPrincipalText] = useState("");
+
+  const superAdminPrincipalSet = new Set(
+    superAdmins.map(([p]) => p.toString()),
+  );
+
+  const searchResults =
+    userSearch.trim().length > 0
+      ? allUsers.filter((u) => {
+          const q = userSearch.toLowerCase();
+          return (
+            (u.alias.toLowerCase().includes(q) ||
+              u.principalId.toString().toLowerCase().includes(q)) &&
+            !superAdminPrincipalSet.has(u.principalId.toString())
+          );
+        })
+      : [];
+
+  const handleAddFromSearch = async (user: UserProfile) => {
+    try {
+      const ok = await addSuperAdmin.mutateAsync({
+        principalId: user.principalId,
+        alias: user.alias || user.principalId.toString().slice(0, 8),
+      });
+      if (ok) {
+        toast.success(`${user.alias || "Användaren"} är nu superadmin`);
+        setUserSearch("");
+      } else {
+        toast.error("Kunde inte lägga till superadmin");
+      }
+    } catch {
+      toast.error("Något gick fel");
+    }
+  };
 
   const handleAdd = async () => {
     if (!alias.trim() || !principalText.trim()) {
@@ -1189,52 +1226,110 @@ function SuperadminsTab() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isPrimaryAdmin && (
-            <div className="border border-border rounded-lg p-4 bg-muted/30 space-y-3">
+          {(isPrimaryAdmin || isAdmin) && (
+            <div className="border border-border rounded-lg p-4 bg-muted/30 space-y-4">
               <p className="font-body text-sm font-medium text-foreground">
                 Lägg till superadmin
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label htmlFor="sa-alias" className="text-xs">
-                    Alias
-                  </Label>
+              {/* Search existing users */}
+              <div className="space-y-2">
+                <Label className="text-xs">
+                  Sök bland befintliga användare
+                </Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
-                    id="sa-alias"
-                    data-ocid="superadmin.alias.input"
-                    value={alias}
-                    onChange={(e) => setAlias(e.target.value)}
-                    placeholder="Alias för ny superadmin"
+                    data-ocid="superadmin.user_search.input"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="Sök alias eller Principal-ID..."
+                    className="pl-9"
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="sa-principal" className="text-xs">
-                    Principal-ID
-                  </Label>
-                  <Input
-                    id="sa-principal"
-                    data-ocid="superadmin.principal.input"
-                    value={principalText}
-                    onChange={(e) => setPrincipalText(e.target.value)}
-                    placeholder="xxxxx-xxxxx-...-cai"
-                    className="font-mono text-xs"
-                  />
-                </div>
-              </div>
-              <Button
-                data-ocid="superadmin.add.button"
-                size="sm"
-                onClick={handleAdd}
-                disabled={addSuperAdmin.isPending}
-                className="gap-2"
-              >
-                {addSuperAdmin.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Plus className="w-3 h-3" />
+                {searchResults.length > 0 && (
+                  <div className="border border-border rounded-lg divide-y divide-border bg-background shadow-sm">
+                    {searchResults.map((user, i) => (
+                      <div
+                        key={user.principalId.toString()}
+                        data-ocid={`superadmin.search_result.${i + 1}`}
+                        className="flex items-center justify-between px-3 py-2"
+                      >
+                        <div>
+                          <p className="font-body text-sm font-medium">
+                            {user.alias || "Inget alias"}
+                          </p>
+                          <p className="font-mono text-xs text-muted-foreground">
+                            {truncatePrincipal(user.principalId.toString())}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          data-ocid={`superadmin.add_from_search.button.${i + 1}`}
+                          onClick={() => handleAddFromSearch(user)}
+                          disabled={addSuperAdmin.isPending}
+                          className="gap-1 text-xs"
+                        >
+                          <Plus className="w-3 h-3" />
+                          Lägg till
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 )}
-                Lägg till superadmin
-              </Button>
+                {userSearch.trim().length > 0 && searchResults.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Inga matchande användare hittades.
+                  </p>
+                )}
+              </div>
+              {/* Manual entry */}
+              <div className="space-y-3 pt-2 border-t border-border">
+                <p className="font-body text-xs text-muted-foreground">
+                  Eller lägg till manuellt med alias och Principal-ID
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="sa-alias" className="text-xs">
+                      Alias
+                    </Label>
+                    <Input
+                      id="sa-alias"
+                      data-ocid="superadmin.alias.input"
+                      value={alias}
+                      onChange={(e) => setAlias(e.target.value)}
+                      placeholder="Alias för ny superadmin"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="sa-principal" className="text-xs">
+                      Principal-ID
+                    </Label>
+                    <Input
+                      id="sa-principal"
+                      data-ocid="superadmin.principal.input"
+                      value={principalText}
+                      onChange={(e) => setPrincipalText(e.target.value)}
+                      placeholder="xxxxx-xxxxx-...-cai"
+                      className="font-mono text-xs"
+                    />
+                  </div>
+                </div>
+                <Button
+                  data-ocid="superadmin.add.button"
+                  size="sm"
+                  onClick={handleAdd}
+                  disabled={addSuperAdmin.isPending}
+                  className="gap-2"
+                >
+                  {addSuperAdmin.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <Plus className="w-3 h-3" />
+                  )}
+                  Lägg till superadmin
+                </Button>
+              </div>
             </div>
           )}
           {isLoading ? (
@@ -1256,7 +1351,7 @@ function SuperadminsTab() {
                 <TableRow>
                   <TableHead>Alias</TableHead>
                   <TableHead>Principal-ID</TableHead>
-                  {isPrimaryAdmin && (
+                  {(isPrimaryAdmin || isAdmin) && (
                     <TableHead className="w-16">Ta bort</TableHead>
                   )}
                 </TableRow>
@@ -1273,7 +1368,7 @@ function SuperadminsTab() {
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       {truncatePrincipal(principal.toString())}
                     </TableCell>
-                    {isPrimaryAdmin && (
+                    {(isPrimaryAdmin || isAdmin) && (
                       <TableCell>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>

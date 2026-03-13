@@ -122,7 +122,7 @@ export function useCheckIsPrimaryAdmin() {
       return actor.checkIsPrimaryAdmin();
     },
     enabled: !!actor && !isFetching,
-    staleTime: 60_000,
+    staleTime: 0,
   });
 }
 

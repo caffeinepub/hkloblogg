@@ -113,6 +113,69 @@ export function useCheckIsAdmin() {
   });
 }
 
+export function useCheckIsPrimaryAdmin() {
+  const { actor, isFetching } = useActor();
+  return useQuery<boolean>({
+    queryKey: ["checkIsPrimaryAdmin"],
+    queryFn: async () => {
+      if (!actor) return false;
+      return actor.checkIsPrimaryAdmin();
+    },
+    enabled: !!actor && !isFetching,
+    staleTime: 60_000,
+  });
+}
+
+export function useGetSuperAdmins() {
+  const { actor, isFetching } = useActor();
+  return useQuery<[import("@icp-sdk/core/principal").Principal, string][]>({
+    queryKey: ["superAdmins"],
+    queryFn: async () => {
+      if (!actor) return [];
+      return actor.getSuperAdmins() as Promise<
+        [import("@icp-sdk/core/principal").Principal, string][]
+      >;
+    },
+    enabled: !!actor && !isFetching,
+  });
+}
+
+export function useAddSuperAdmin() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      principalId,
+      alias,
+    }: {
+      principalId: import("@icp-sdk/core/principal").Principal;
+      alias: string;
+    }) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.addSuperAdmin(principalId, alias);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["superAdmins"] });
+    },
+  });
+}
+
+export function useRemoveSuperAdmin() {
+  const { actor } = useActor();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      principalId: import("@icp-sdk/core/principal").Principal,
+    ) => {
+      if (!actor) throw new Error("Not connected");
+      return actor.removeSuperAdmin(principalId);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["superAdmins"] });
+    },
+  });
+}
+
 export function useUpdateCategory() {
   const { actor } = useActor();
   const qc = useQueryClient();

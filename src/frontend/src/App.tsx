@@ -43,6 +43,7 @@ import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
 import {
   useCategories,
+  useCheckIsAdmin,
   useFollowers,
   useFollowing,
   useInitDefaultCategories,
@@ -791,6 +792,7 @@ function GlobalSearch({ onNavigate }: { onNavigate: NavigateFn }) {
 function AppInner() {
   useInitDefaultCategories();
   useActor();
+  const { data: isAdmin = false } = useCheckIsAdmin();
 
   const { login, clear, loginStatus, identity, isInitializing } =
     useInternetIdentity();
@@ -836,10 +838,13 @@ function AppInner() {
       ocid: "nav.admin.link",
       view: { type: "admin" } as AppView,
       authOnly: true,
+      adminOnly: true,
     },
   ];
 
-  const visibleLinks = navLinks.filter((l) => !l.authOnly || isLoggedIn);
+  const visibleLinks = navLinks.filter(
+    (l) => (!l.authOnly || isLoggedIn) && (!(l as any).adminOnly || isAdmin),
+  );
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

@@ -19,10 +19,10 @@ const queryClient = new QueryClient();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={queryClient}>
-    <LanguageProvider>
-      <InternetIdentityProvider>
+    <InternetIdentityProvider>
+      <LanguageProvider>
         <App />
-      </InternetIdentityProvider>
-    </LanguageProvider>
+      </LanguageProvider>
+    </InternetIdentityProvider>
   </QueryClientProvider>,
 );

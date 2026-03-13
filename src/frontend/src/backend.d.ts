@@ -111,6 +111,11 @@ export interface backendInterface {
   getBlockedUsers: ActorMethod<[], Principal[]>;
   isUserBlocked: ActorMethod<[Principal], boolean>;
   checkIsAdmin: ActorMethod<[], boolean>;
+  claimPrimaryAdmin: ActorMethod<[], boolean>;
+  checkIsPrimaryAdmin: ActorMethod<[], boolean>;
+  addSuperAdmin: ActorMethod<[Principal, string], boolean>;
+  removeSuperAdmin: ActorMethod<[Principal], boolean>;
+  getSuperAdmins: ActorMethod<[], [Principal, string][]>;
   // Fas 5
   sendNotification: ActorMethod<[Principal, string, string, string], boolean>;
   getUnreadNotifications: ActorMethod<[], Notification[]>;

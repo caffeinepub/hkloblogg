@@ -70,15 +70,19 @@ import type {
 } from "../backend.d";
 import {
   useAddReaderAlias,
+  useAddSuperAdmin,
   useAllPosts,
   useAllUsers,
   useBlockUser,
   useBlockedUsers,
   useCategories,
+  useCheckIsPrimaryAdmin,
   useCreateCategory,
   useDeleteCategory,
   useDeletePost,
+  useGetSuperAdmins,
   useModerationLogs,
+  useRemoveSuperAdmin,
   useUnblockUser,
   useUpdateCategory,
   useUpdateUserAlias,
@@ -1133,6 +1137,193 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
     </div>
   );
 }
+// ─── SuperadminsTab ──────────────────────────────────────────────────────────────────
+
+function SuperadminsTab() {
+  const { data: isPrimaryAdmin = false } = useCheckIsPrimaryAdmin();
+  const { data: superAdmins = [], isLoading } = useGetSuperAdmins();
+  const addSuperAdmin = useAddSuperAdmin();
+  const removeSuperAdmin = useRemoveSuperAdmin();
+  const [alias, setAlias] = useState("");
+  const [principalText, setPrincipalText] = useState("");
+
+  const handleAdd = async () => {
+    if (!alias.trim() || !principalText.trim()) {
+      toast.error("Ange både alias och Principal-ID");
+      return;
+    }
+    try {
+      const p = Principal.fromText(principalText.trim());
+      const ok = await addSuperAdmin.mutateAsync({
+        principalId: p,
+        alias: alias.trim(),
+      });
+      if (ok) {
+        toast.success(`${alias} är nu superadmin`);
+        setAlias("");
+        setPrincipalText("");
+      } else {
+        toast.error("Kunde inte lägga till superadmin");
+      }
+    } catch {
+      toast.error("Ogiltigt Principal-ID");
+    }
+  };
+
+  const handleRemove = async (p: Principal, name: string) => {
+    const ok = await removeSuperAdmin.mutateAsync(p);
+    if (ok) {
+      toast.success(`${name} är inte längre superadmin`);
+    } else {
+      toast.error("Kunde inte ta bort superadmin");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-display text-base flex items-center gap-2">
+            <Shield className="w-4 h-4 text-primary" />
+            Superadmins ({superAdmins.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isPrimaryAdmin && (
+            <div className="border border-border rounded-lg p-4 bg-muted/30 space-y-3">
+              <p className="font-body text-sm font-medium text-foreground">
+                Lägg till superadmin
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="sa-alias" className="text-xs">
+                    Alias
+                  </Label>
+                  <Input
+                    id="sa-alias"
+                    data-ocid="superadmin.alias.input"
+                    value={alias}
+                    onChange={(e) => setAlias(e.target.value)}
+                    placeholder="Alias för ny superadmin"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="sa-principal" className="text-xs">
+                    Principal-ID
+                  </Label>
+                  <Input
+                    id="sa-principal"
+                    data-ocid="superadmin.principal.input"
+                    value={principalText}
+                    onChange={(e) => setPrincipalText(e.target.value)}
+                    placeholder="xxxxx-xxxxx-...-cai"
+                    className="font-mono text-xs"
+                  />
+                </div>
+              </div>
+              <Button
+                data-ocid="superadmin.add.button"
+                size="sm"
+                onClick={handleAdd}
+                disabled={addSuperAdmin.isPending}
+                className="gap-2"
+              >
+                {addSuperAdmin.isPending ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Plus className="w-3 h-3" />
+                )}
+                Lägg till superadmin
+              </Button>
+            </div>
+          )}
+          {isLoading ? (
+            <div data-ocid="superadmin.loading_state" className="space-y-2">
+              {[1, 2].map((i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
+            </div>
+          ) : superAdmins.length === 0 ? (
+            <p
+              data-ocid="superadmin.empty_state"
+              className="font-body text-sm text-muted-foreground text-center py-4"
+            >
+              Inga extra superadmins tillagda ännu.
+            </p>
+          ) : (
+            <Table data-ocid="superadmin.table">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Alias</TableHead>
+                  <TableHead>Principal-ID</TableHead>
+                  {isPrimaryAdmin && (
+                    <TableHead className="w-16">Ta bort</TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {superAdmins.map(([principal, adminAlias], i) => (
+                  <TableRow
+                    key={principal.toString()}
+                    data-ocid={`superadmin.item.${i + 1}`}
+                  >
+                    <TableCell className="font-body font-medium">
+                      {adminAlias}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {truncatePrincipal(principal.toString())}
+                    </TableCell>
+                    {isPrimaryAdmin && (
+                      <TableCell>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              data-ocid={`superadmin.delete_button.${i + 1}`}
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent data-ocid="superadmin.delete.dialog">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>
+                                Ta bort superadmin
+                              </AlertDialogTitle>
+                              <AlertDialogDescription>
+                                {adminAlias} kommer att förlora sina
+                                superadmin-rättigheter. Vill du fortsätta?
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel data-ocid="superadmin.delete.cancel_button">
+                                Avbryt
+                              </AlertDialogCancel>
+                              <AlertDialogAction
+                                data-ocid="superadmin.delete.confirm_button"
+                                onClick={() =>
+                                  handleRemove(principal, adminAlias)
+                                }
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Ta bort
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 // ─── AdminPanel ──────────────────────────────────────────────────────────────────────
 
@@ -1200,6 +1391,14 @@ export default function AdminPanel({ onNavigate }: AdminPanelProps) {
             <FileText className="w-4 h-4" />
             {t("admin_tab_posts")}
           </TabsTrigger>
+          <TabsTrigger
+            data-ocid="admin.superadmins.tab"
+            value="superadmins"
+            className="font-body text-sm rounded-lg gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+          >
+            <Shield className="w-4 h-4" />
+            Superadmins
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="kategorier">
@@ -1216,6 +1415,10 @@ export default function AdminPanel({ onNavigate }: AdminPanelProps) {
 
         <TabsContent value="inlagg">
           <InlaggTab onNavigate={onNavigate} />
+        </TabsContent>
+
+        <TabsContent value="superadmins">
+          <SuperadminsTab />
         </TabsContent>
       </Tabs>
     </motion.div>

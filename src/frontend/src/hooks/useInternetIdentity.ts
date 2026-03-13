@@ -1,35 +1,36 @@
 /**
- * ⚠️ CRITICAL FILE -- DO NOT MODIFY WITHOUT READING AUTH_RULES.md ⚠️
+ * ================================================================
+ * CRITICAL FILE -- DO NOT MODIFY WITHOUT READING AUTH_RULES.md
+ * ================================================================
  *
- * RULE 1: authClient MUST be stored in a useRef, NOT useState.
- *         Using useState causes the useEffect to re-run every time the client
- *         is set, creating an infinite loop that breaks session restoration.
+ * RULES (breaking any of these will cause login/session bugs):
  *
- * RULE 2: The `finally` block MUST NOT exist in the useEffect.
- *         A finally block always runs setStatus("idle"), which overwrites
- *         "success" even when a valid session was found. This makes the app
- *         think the user is not logged in even when they are.
+ * 1. authClient MUST be useRef, NEVER useState.
+ *    Reason: useState triggers re-renders which re-run useEffect,
+ *    creating an infinite loop that destroys session state.
  *
- * RULE 3: Status MUST be set explicitly.
- *         If isAuthenticated === true  → setStatus("success")
- *         If isAuthenticated === false → setStatus("idle")
- *         There is NO finally block. Status must be set on every code path.
+ * 2. The useEffect MUST NOT have authClient or createOptions in its
+ *    dependency array. It must run EXACTLY ONCE on mount.
+ *    Reason: Any re-run resets the client and loses the session.
  *
- * RULE 4: login() MUST silently sync state if already authenticated.
- *         It must NOT call setErrorMessage("User is already authenticated").
- *         If the session is already valid, update identity + status to success.
+ * 3. There MUST be NO finally block in the useEffect.
+ *    Reason: finally { setStatus("idle") } always runs and overwrites
+ *    "success" even when a valid session was found.
  *
- * RULE 5: The useEffect dependency array MUST NOT include authClient.
- *         Including it re-triggers the effect after setAuthClient(), causing
- *         another loop. Use an empty [] dependency array.
+ * 4. Status MUST be set explicitly:
+ *    - "success" when a valid saved session is found
+ *    - "idle" when no session is found
+ *    Never rely on finally to set status.
  *
- * Symptoms of regression:
- *   - Login button doesn't work
- *   - Posts/drafts not visible after page reload
- *   - "Not connected" errors on mutations
- *   - Menu items (Skapa inlägg, Mina inlägg) not showing after login
+ * 5. login() MUST silently sync state if already authenticated.
+ *    NEVER throw/setError when the user is already logged in.
+ *    Reason: Page reloads can call login() while session is valid.
+ *
+ * HISTORY: This file was the root cause of login failures in versions
+ * v11-v49. Each regression was caused by reverting to an old version
+ * of this file. See AUTH_RULES.md for full history.
+ * ================================================================
  */
-
 import {
   AuthClient,
   type AuthClientCreateOptions,
@@ -120,8 +121,9 @@ export function InternetIdentityProvider({
   children: ReactNode;
   createOptions?: AuthClientCreateOptions;
 }>) {
-  // RULE 1: useRef, not useState -- avoids re-triggering useEffect
-  const authClientRef = useRef<AuthClient | null>(null);
+  // RULE 1: authClient MUST be useRef, never useState.
+  const authClientRef = useRef<AuthClient | undefined>(undefined);
+  // Capture createOptions in a ref so useEffect can use it without adding it to deps.
   const createOptionsRef = useRef(createOptions);
 
   const [identity, setIdentity] = useState<Identity | undefined>(undefined);
@@ -161,7 +163,7 @@ export function InternetIdentityProvider({
     }
 
     const currentIdentity = client.getIdentity();
-    // RULE 4: If already authenticated, sync state instead of throwing error
+    // RULE 5: If already authenticated, sync state silently. NEVER throw an error.
     if (
       !currentIdentity.getPrincipal().isAnonymous() &&
       currentIdentity instanceof DelegationIdentity &&
@@ -193,8 +195,8 @@ export function InternetIdentityProvider({
     void client
       .logout()
       .then(() => {
-        authClientRef.current = null;
         setIdentity(undefined);
+        authClientRef.current = undefined;
         setStatus("idle");
         setError(undefined);
       })
@@ -208,7 +210,9 @@ export function InternetIdentityProvider({
       });
   }, [setErrorMessage]);
 
-  // RULE 5: Empty dependency array -- runs exactly once on mount
+  // RULE 2: Empty dependency array -- runs EXACTLY ONCE on mount.
+  // RULE 3: NO finally block.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally runs once on mount only
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -217,17 +221,15 @@ export function InternetIdentityProvider({
         const client = await createAuthClient(createOptionsRef.current);
         if (cancelled) return;
         authClientRef.current = client;
-
         const isAuthenticated = await client.isAuthenticated();
         if (cancelled) return;
-
-        // RULE 2 & 3: No finally block. Set status explicitly on every path.
+        // RULE 4: Explicitly set "success" or "idle" -- never rely on finally.
         if (isAuthenticated) {
           const loadedIdentity = client.getIdentity();
           setIdentity(loadedIdentity);
-          setStatus("success"); // RULE 3: explicitly "success"
+          setStatus("success");
         } else {
-          setStatus("idle"); // RULE 3: explicitly "idle"
+          setStatus("idle");
         }
       } catch (unknownError) {
         if (!cancelled) {
@@ -239,12 +241,12 @@ export function InternetIdentityProvider({
           );
         }
       }
-      // RULE 2: NO finally block here
+      // NO finally block here -- see RULE 3
     })();
     return () => {
       cancelled = true;
     };
-  }, []); // RULE 5: empty deps
+  }, []); // RULE 2: empty deps -- run once only
 
   const value = useMemo<ProviderValue>(
     () => ({

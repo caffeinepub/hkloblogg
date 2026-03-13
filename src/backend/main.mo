@@ -125,6 +125,10 @@ actor {
   stable var comments : [Comment] = [];
   stable var nextCommentId : Nat = 1;
 
+  // Superadmin management
+  stable var primaryAdminPrincipalId : ?Principal = null;
+  stable var extraSuperAdmins : [(Principal, Text)] = [];
+
   // Stable backup arrays for Maps (Maps themselves are not stable)
   stable var stableUserProfiles : [(Principal, UserProfile)] = [];
   stable var stablePostImages : [(Nat, PostImages)] = [];
@@ -697,6 +701,54 @@ actor {
 
   public query ({ caller }) func checkIsAdmin() : async Bool {
     AccessControl.isAdmin(accessControlState, caller);
+  };
+
+  // Superadmin management
+  // Claim primary admin role (one-time, first admin to call this becomes primary)
+  public shared ({ caller }) func claimPrimaryAdmin() : async Bool {
+    if (primaryAdminPrincipalId != null) { return false };
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return false };
+    primaryAdminPrincipalId := ?caller;
+    true;
+  };
+
+  public query ({ caller }) func checkIsPrimaryAdmin() : async Bool {
+    switch (primaryAdminPrincipalId) {
+      case (?p) { Principal.equal(p, caller) };
+      case (null) { AccessControl.isAdmin(accessControlState, caller) };
+    };
+  };
+
+  public shared ({ caller }) func addSuperAdmin(newAdmin : Principal, alias : Text) : async Bool {
+    let isPrimary = switch (primaryAdminPrincipalId) {
+      case (?p) { Principal.equal(p, caller) };
+      case (null) { AccessControl.isAdmin(accessControlState, caller) };
+    };
+    if (not isPrimary) { return false };
+    if (Principal.equal(newAdmin, caller)) { return false };
+    AccessControl.assignRole(accessControlState, caller, newAdmin, #admin);
+    let exists = extraSuperAdmins.find(func((p, _) : (Principal, Text)) : Bool = Principal.equal(p, newAdmin)) != null;
+    if (not exists) {
+      extraSuperAdmins := extraSuperAdmins.concat([(newAdmin, alias)]);
+    };
+    true;
+  };
+
+  public shared ({ caller }) func removeSuperAdmin(targetAdmin : Principal) : async Bool {
+    let isPrimary = switch (primaryAdminPrincipalId) {
+      case (?p) { Principal.equal(p, caller) };
+      case (null) { false };
+    };
+    if (not isPrimary) { return false };
+    if (Principal.equal(targetAdmin, caller)) { return false };
+    AccessControl.assignRole(accessControlState, caller, targetAdmin, #user);
+    extraSuperAdmins := extraSuperAdmins.filter(func((p, _) : (Principal, Text)) : Bool = not Principal.equal(p, targetAdmin));
+    true;
+  };
+
+  public query ({ caller }) func getSuperAdmins() : async [(Principal, Text)] {
+    if (not AccessControl.isAdmin(accessControlState, caller)) { return [] };
+    extraSuperAdmins;
   };
 
   // Fas 5: Notifications

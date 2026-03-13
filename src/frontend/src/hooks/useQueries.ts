@@ -10,6 +10,7 @@ import type {
   UserProfile,
 } from "../backend.d";
 import { useActor } from "./useActor";
+import { useInternetIdentity } from "./useInternetIdentity";
 
 export function useInitDefaultCategories() {
   const { actor, isFetching } = useActor();
@@ -100,28 +101,33 @@ export function useCreateCategory() {
   });
 }
 
+// Auth-dependent: include principal in key so anonymous result never pollutes authenticated cache
 export function useCheckIsAdmin() {
   const { actor, isFetching } = useActor();
+  const { identity } = useInternetIdentity();
+  const principal = identity?.getPrincipal().toString();
   return useQuery<boolean>({
-    queryKey: ["checkIsAdmin"],
+    queryKey: ["checkIsAdmin", principal],
     queryFn: async () => {
       if (!actor) return false;
       return actor.checkIsAdmin();
     },
-    enabled: !!actor && !isFetching,
-    staleTime: 60_000,
+    enabled: !!actor && !isFetching && !!identity,
+    staleTime: 0,
   });
 }
 
 export function useCheckIsPrimaryAdmin() {
   const { actor, isFetching } = useActor();
+  const { identity } = useInternetIdentity();
+  const principal = identity?.getPrincipal().toString();
   return useQuery<boolean>({
-    queryKey: ["checkIsPrimaryAdmin"],
+    queryKey: ["checkIsPrimaryAdmin", principal],
     queryFn: async () => {
       if (!actor) return false;
       return actor.checkIsPrimaryAdmin();
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!identity,
     staleTime: 0,
   });
 }
@@ -236,15 +242,18 @@ export function useAddReaderAlias() {
   });
 }
 
+// Auth-dependent: include principal in key so anonymous [] never pollutes authenticated cache
 export function usePostsByAuthor() {
   const { actor, isFetching } = useActor();
+  const { identity } = useInternetIdentity();
+  const principal = identity?.getPrincipal().toString();
   return useQuery<Post[]>({
-    queryKey: ["postsByAuthor"],
+    queryKey: ["postsByAuthor", principal],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getPostsByAuthor() as Promise<Post[]>;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!identity,
   });
 }
 
@@ -523,26 +532,30 @@ export function useAllPosts() {
 
 export function useUnreadNotifications() {
   const { actor, isFetching } = useActor();
+  const { identity } = useInternetIdentity();
+  const principal = identity?.getPrincipal().toString();
   return useQuery<Notification[]>({
-    queryKey: ["unreadNotifications"],
+    queryKey: ["unreadNotifications", principal],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getUnreadNotifications() as Promise<Notification[]>;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!identity,
     refetchInterval: 30_000,
   });
 }
 
 export function useAllNotifications() {
   const { actor, isFetching } = useActor();
+  const { identity } = useInternetIdentity();
+  const principal = identity?.getPrincipal().toString();
   return useQuery<Notification[]>({
-    queryKey: ["allNotifications"],
+    queryKey: ["allNotifications", principal],
     queryFn: async () => {
       if (!actor) return [];
       return actor.getAllNotifications() as Promise<Notification[]>;
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && !!identity,
     refetchInterval: 30_000,
   });
 }

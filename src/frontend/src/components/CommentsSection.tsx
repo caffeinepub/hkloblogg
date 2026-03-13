@@ -8,6 +8,7 @@ import { ImagePlus, Loader2, Smile, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Comment } from "../backend.d";
+import { useActor } from "../hooks/useActor";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useAddComment, useComments } from "../hooks/useQueries";
 import { useStorageClient } from "../hooks/useStorageClient";
@@ -91,6 +92,7 @@ interface CommentsSectionProps {
 
 export default function CommentsSection({ postId }: CommentsSectionProps) {
   const { identity } = useInternetIdentity();
+  const { actor, isFetching: actorFetching } = useActor();
   const { t } = useLanguage();
   const { data: comments = [], isLoading } = useComments(postId);
   const addComment = useAddComment();
@@ -104,6 +106,9 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Actor is ready when it exists and is not being fetched
+  const actorReady = !!actor && !actorFetching;
 
   useEffect(() => {
     if (!showEmoji) return;
@@ -175,6 +180,10 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
   }
 
   async function handleSubmit() {
+    if (!actorReady) {
+      toast.error("Anslutningen är inte redo. Försök igen om ett ögonblick.");
+      return;
+    }
     if (!text.trim() && attachments.length === 0) return;
     if (attachments.some((a) => a.uploading)) {
       toast.error(t("comments_uploading"));
@@ -261,9 +270,12 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
               ref={textareaRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder={t("comments_placeholder")}
+              placeholder={
+                actorReady ? t("comments_placeholder") : "Ansluter..."
+              }
               data-ocid="comments.textarea"
               className="font-body text-sm resize-none pr-4 min-h-[80px]"
+              disabled={!actorReady}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
@@ -280,7 +292,8 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
                   type="button"
                   data-ocid="comments.emoji_button"
                   onClick={() => setShowEmoji((v) => !v)}
-                  className="p-2 rounded-lg hover:bg-accent/60 transition-colors text-muted-foreground hover:text-amber-600"
+                  disabled={!actorReady}
+                  className="p-2 rounded-lg hover:bg-accent/60 transition-colors text-muted-foreground hover:text-amber-600 disabled:opacity-40"
                   title="Lägg till emoji"
                   aria-label="Emoji-väljare"
                 >
@@ -303,13 +316,17 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
                 multiple
                 className="hidden"
                 onChange={handleImageSelect}
-                disabled={!storageReady || attachments.length >= 3}
+                disabled={
+                  !storageReady || !actorReady || attachments.length >= 3
+                }
               />
               <button
                 type="button"
                 data-ocid="comments.upload_button"
                 onClick={() => imageInputRef.current?.click()}
-                disabled={!storageReady || attachments.length >= 3}
+                disabled={
+                  !storageReady || !actorReady || attachments.length >= 3
+                }
                 className="p-2 rounded-lg hover:bg-accent/60 transition-colors text-muted-foreground hover:text-amber-600 disabled:opacity-40 disabled:cursor-not-allowed"
                 title={attachments.length >= 3 ? "Max 3 bilder" : "Bifoga bild"}
                 aria-label="Bifoga bild"
@@ -323,16 +340,19 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
               data-ocid="comments.submit_button"
               onClick={handleSubmit}
               disabled={
+                !actorReady ||
                 addComment.isPending ||
                 (!text.trim() && attachments.length === 0) ||
                 attachments.some((a) => a.uploading)
               }
-              className="bg-amber-600 hover:bg-amber-700 text-white font-body"
+              className="bg-amber-600 hover:bg-amber-700 text-white font-body disabled:opacity-50"
             >
-              {addComment.isPending ? (
+              {!actorReady ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+              ) : addComment.isPending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
               ) : null}
-              {t("comments_submit")}
+              {!actorReady ? "Ansluter..." : t("comments_submit")}
             </Button>
           </div>
         </div>

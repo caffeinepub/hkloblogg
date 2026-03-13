@@ -21,34 +21,42 @@ import {
 import { CalendarDays, Filter, SlidersHorizontal, X } from "lucide-react";
 import type { Category } from "../backend.d";
 
+export type SortBy = "date" | "mostComments" | "mostFollowers" | "mostViews";
+
 export interface PostFilters {
   aliasQuery: string;
   categoryId: string;
+  showPublic: boolean;
   showRestricted: boolean;
   showPrivate: boolean;
   dateFrom: string;
   dateTo: string;
   minLikes: string;
+  sortBy: SortBy;
 }
 
 export const EMPTY_FILTERS: PostFilters = {
   aliasQuery: "",
   categoryId: "",
+  showPublic: false,
   showRestricted: false,
   showPrivate: false,
   dateFrom: "",
   dateTo: "",
   minLikes: "",
+  sortBy: "date",
 };
 
 export function countActiveFilters(f: PostFilters): number {
   let n = 0;
   if (f.aliasQuery.trim()) n++;
   if (f.categoryId) n++;
+  if (f.showPublic) n++;
   if (f.showRestricted) n++;
   if (f.showPrivate) n++;
   if (f.dateFrom || f.dateTo) n++;
   if (f.minLikes !== "") n++;
+  if (f.sortBy !== "date") n++;
   return n;
 }
 
@@ -119,6 +127,34 @@ export default function MyPostsFilterPanel({
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+          {/* Sortering */}
+          <div className="space-y-2">
+            <Label className="font-body text-sm font-medium text-foreground">
+              Sortera efter
+            </Label>
+            <Select
+              value={filters.sortBy}
+              onValueChange={(v) => onChange({ sortBy: v as SortBy })}
+            >
+              <SelectTrigger
+                data-ocid="posts.filter.select"
+                className="font-body text-sm bg-background border-border"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="font-body text-sm">
+                <SelectItem value="date">Senaste datum</SelectItem>
+                <SelectItem value="mostViews">Mest lästa</SelectItem>
+                <SelectItem value="mostComments">Flest kommentarer</SelectItem>
+                <SelectItem value="mostFollowers">
+                  Flest följare (författare)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Separator className="bg-border" />
+
           {/* Alias / kommentarsförfattare */}
           <div className="space-y-2">
             <Label className="font-body text-sm font-medium text-foreground">
@@ -174,6 +210,21 @@ export default function MyPostsFilterPanel({
               Åtkomstnivå
             </Label>
             <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  data-ocid="posts.filter.checkbox"
+                  id="filter-public"
+                  checked={filters.showPublic}
+                  onCheckedChange={(v) => onChange({ showPublic: Boolean(v) })}
+                  className="border-border"
+                />
+                <Label
+                  htmlFor="filter-public"
+                  className="font-body text-sm text-foreground cursor-pointer"
+                >
+                  Offentligt
+                </Label>
+              </div>
               <div className="flex items-center gap-2">
                 <Checkbox
                   data-ocid="posts.filter.checkbox"

@@ -33,6 +33,7 @@ export interface Post {
   coverImageKey: [] | [string];
   galleryImageKeys: string[];
   reactions: Reaction[];
+  viewCount: bigint;
 }
 
 export interface Comment {
@@ -93,6 +94,7 @@ export interface backendInterface {
   getPublishedPosts: ActorMethod<[], Post[]>;
   getPostById: ActorMethod<[bigint], [] | [Post]>;
   getPostsByAuthor: ActorMethod<[], Post[]>;
+  incrementPostView: ActorMethod<[bigint], undefined>;
   getPostsByPrincipal: ActorMethod<[Principal], Post[]>;
   getPostsForUser: ActorMethod<[], Post[]>;
   getDiscoverPosts: ActorMethod<[], Post[]>;
@@ -116,6 +118,7 @@ export interface backendInterface {
   unfollowUser: ActorMethod<[Principal], boolean>;
   getFollowers: ActorMethod<[Principal], Principal[]>;
   getFollowing: ActorMethod<[Principal], Principal[]>;
+  getFollowerCount: ActorMethod<[Principal], bigint>;
   isFollowing: ActorMethod<[Principal], boolean>;
   // Fas 6
   addReactionToPost: ActorMethod<[bigint, string], boolean>;

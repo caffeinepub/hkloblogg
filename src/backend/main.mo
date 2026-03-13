@@ -53,6 +53,7 @@ actor {
     coverImageKey : ?Text;
     galleryImageKeys : [Text];
     reactions : [Reaction];
+    viewCount : Nat;
   };
 
   // Fas 6: Comment type
@@ -130,6 +131,7 @@ actor {
   stable var stableReaderAliasMap : [(Principal, Text)] = [];
   stable var stableBlockedUsers : [(Principal, Bool)] = [];
   stable var stablePostReactions : [(Nat, [Reaction])] = [];
+  stable var stablePostViewCounts : [(Nat, Nat)] = [];
 
   // Runtime Maps (reconstructed from stable backups on upgrade)
   var userProfiles : Map.Map<Principal, UserProfile> = Map.empty<Principal, UserProfile>();
@@ -138,6 +140,7 @@ actor {
   var readerAliasMap : Map.Map<Principal, Text> = Map.empty<Principal, Text>();
   var blockedUsers : Map.Map<Principal, Bool> = Map.empty<Principal, Bool>();
   var postReactions : Map.Map<Nat, [Reaction]> = Map.empty<Nat, [Reaction]>();
+  var postViewCounts : Map.Map<Nat, Nat> = Map.empty<Nat, Nat>();
 
   // ── Upgrade hooks ─────────────────────────────────────────────────────────
 
@@ -165,6 +168,9 @@ actor {
     var pr : [(Nat, [Reaction])] = [];
     for (entry in postReactions.entries()) { pr := pr.concat([entry]) };
     stablePostReactions := pr;
+    var vc : [(Nat, Nat)] = [];
+    for (entry in postViewCounts.entries()) { vc := vc.concat([entry]) };
+    stablePostViewCounts := vc;
   };
 
   system func postupgrade() {
@@ -174,6 +180,7 @@ actor {
     for ((k, v) in stableReaderAliasMap.vals()) { readerAliasMap.add(k, v) };
     for ((k, v) in stableBlockedUsers.vals()) { blockedUsers.add(k, v) };
     for ((k, v) in stablePostReactions.vals()) { postReactions.add(k, v) };
+    for ((k, v) in stablePostViewCounts.vals()) { postViewCounts.add(k, v) };
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -201,6 +208,10 @@ actor {
       case (?r) { r };
       case (null) { [] };
     };
+    let viewCount : Nat = switch (postViewCounts.get(p.id)) {
+      case (?v) { v };
+      case (null) { 0 };
+    };
     {
       id = p.id;
       title = p.title;
@@ -214,6 +225,7 @@ actor {
       coverImageKey = imgs.coverImageKey;
       galleryImageKeys = imgs.galleryImageKeys;
       reactions;
+      viewCount;
     };
   };
 
@@ -495,6 +507,14 @@ actor {
       case (?p) { ?enrichPost(p) };
     };
   };
+  public shared func incrementPostView(postId : Nat) : async () {
+    let current : Nat = switch (postViewCounts.get(postId)) {
+      case (?v) { v };
+      case (null) { 0 };
+    };
+    postViewCounts.add(postId, current + 1);
+  };
+
 
   public query ({ caller }) func getPostsByAuthor() : async [Post] {
     posts
@@ -719,6 +739,14 @@ actor {
     };
     result;
   };
+  public query func getFollowerCount(principalId : Principal) : async Nat {
+    var count : Nat = 0;
+    for ((_, followee) in follows.vals()) {
+      if (Principal.equal(followee, principalId)) { count += 1 };
+    };
+    count;
+  };
+
 
   public query func getFollowing(principalId : Principal) : async [Principal] {
     var result : [Principal] = [];

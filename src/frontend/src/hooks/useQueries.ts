@@ -642,3 +642,26 @@ export function useAddComment() {
     },
   });
 }
+
+export function useIncrementPostView() {
+  const { actor } = useActor();
+  return useMutation({
+    mutationFn: async (postId: bigint) => {
+      if (!actor) return;
+      await actor.incrementPostView(postId);
+    },
+  });
+}
+
+export function useFollowerCount(principalId: Principal | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<bigint>({
+    queryKey: ["followerCount", principalId?.toString()],
+    queryFn: async () => {
+      if (!actor || !principalId) return BigInt(0);
+      return actor.getFollowerCount(principalId) as Promise<bigint>;
+    },
+    enabled: !!actor && !isFetching && !!principalId,
+    staleTime: 60_000,
+  });
+}

@@ -7,7 +7,11 @@ import { useEffect, useRef, useState } from "react";
 import CommentsSection from "../components/CommentsSection";
 import ReactionBar from "../components/ReactionBar";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
-import { useCategories, usePostById } from "../hooks/useQueries";
+import {
+  useCategories,
+  useIncrementPostView,
+  usePostById,
+} from "../hooks/useQueries";
 import { useStorageClient } from "../hooks/useStorageClient";
 import type { NavigateFn } from "../types";
 
@@ -86,6 +90,7 @@ interface PostViewProps {
 export default function PostView({ postId, onNavigate }: PostViewProps) {
   const { data: post, isLoading, isError } = usePostById(postId);
   const { data: categories = [] } = useCategories();
+  const incrementView = useIncrementPostView();
   const { identity } = useInternetIdentity();
   const { getImageUrl, isReady: storageReady } = useStorageClient();
 
@@ -97,6 +102,16 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
     post && principal && post.authorPrincipal.toString() === principal;
 
   const category = categories.find((c) => post && c.id === post.categoryId);
+  // Increment view count when post loads (use ref to avoid mutateAsync dependency)
+  const incrementViewRef = useRef(incrementView.mutateAsync);
+  incrementViewRef.current = incrementView.mutateAsync;
+  const viewedPostIdRef = useRef<bigint | null>(null);
+  useEffect(() => {
+    if (post && viewedPostIdRef.current !== post.id) {
+      viewedPostIdRef.current = post.id;
+      void incrementViewRef.current(post.id);
+    }
+  }, [post]);
 
   // Load gallery URLs
   useEffect(() => {

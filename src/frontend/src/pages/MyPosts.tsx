@@ -16,11 +16,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   BookOpen,
   Edit,
+  Eye,
+  Heart,
   Loader2,
+  MessageSquare,
   PenSquare,
   Send,
   SlidersHorizontal,
   Trash2,
+  Users,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
@@ -35,6 +39,7 @@ import { useCommentsForPosts } from "../hooks/useCommentsForPosts";
 import {
   useCategories,
   useDeletePost,
+  useFollowerCount,
   usePostsByAuthor,
   usePublishPost,
 } from "../hooks/useQueries";
@@ -56,11 +61,20 @@ function isDraft(post: Post): boolean {
 interface PostCardProps {
   post: Post;
   index: number;
+  commentCount: number;
+  followerCount: number;
   onEdit: () => void;
   onView: () => void;
 }
 
-function PostCard({ post, index, onEdit, onView }: PostCardProps) {
+function PostCard({
+  post,
+  index,
+  commentCount,
+  followerCount,
+  onEdit,
+  onView,
+}: PostCardProps) {
   const deletePost = useDeletePost();
   const publishPost = usePublishPost();
 
@@ -112,10 +126,31 @@ function PostCard({ post, index, onEdit, onView }: PostCardProps) {
           </div>
         </CardHeader>
         <CardContent>
-          <p className="text-xs font-body text-muted-foreground mb-4">
+          <p className="text-xs font-body text-muted-foreground mb-3">
             Skapad {formatDate(post.createdAt)} · Uppdaterad{" "}
             {formatDate(post.updatedAt)}
           </p>
+
+          {/* Stats row */}
+          <div className="flex items-center gap-4 mb-4">
+            <span className="flex items-center gap-1 text-xs font-body text-muted-foreground">
+              <Eye className="w-3.5 h-3.5" />
+              {Number(post.viewCount)}
+            </span>
+            <span className="flex items-center gap-1 text-xs font-body text-muted-foreground">
+              <MessageSquare className="w-3.5 h-3.5" />
+              {commentCount}
+            </span>
+            <span className="flex items-center gap-1 text-xs font-body text-muted-foreground">
+              <Heart className="w-3.5 h-3.5" />
+              {(post.reactions ?? []).length}
+            </span>
+            <span className="flex items-center gap-1 text-xs font-body text-muted-foreground">
+              <Users className="w-3.5 h-3.5" />
+              {followerCount} följare
+            </span>
+          </div>
+
           <div className="flex flex-wrap gap-2">
             <Button
               data-ocid={`posts.edit_button.${index + 1}`}
@@ -207,74 +242,143 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
 
   const aliasFilterActive = filters.aliasQuery.trim().length > 0;
   const postIds = useMemo(() => posts.map((p) => p.id), [posts]);
-  const { data: commentsMap = {} } = useCommentsForPosts(
-    postIds,
-    aliasFilterActive,
-  );
+  const { data: commentsMap = {} } = useCommentsForPosts(postIds, true);
+
+  // Collect unique author principals to fetch follower counts
+  const authorPrincipals = useMemo(() => {
+    const seen = new Set<string>();
+    const result: Array<{
+      principal: (typeof posts)[0]["authorPrincipal"];
+      key: string;
+    }> = [];
+    for (const p of posts) {
+      const key = p.authorPrincipal.toString();
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push({ principal: p.authorPrincipal, key });
+      }
+    }
+    return result;
+  }, [posts]);
+
+  // We only have one author (own posts), so just use the first
+  const firstAuthor = authorPrincipals[0]?.principal ?? null;
+  const { data: myFollowerCount = BigInt(0) } = useFollowerCount(firstAuthor);
+
+  // Build follower count map (all posts share the same author)
+  const followerCountMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const { key } of authorPrincipals) {
+      map[key] = Number(myFollowerCount);
+    }
+    return map;
+  }, [authorPrincipals, myFollowerCount]);
 
   const activeCount = countActiveFilters(filters);
 
   const patchFilters = (patch: Partial<PostFilters>) =>
     setFilters((prev) => ({ ...prev, ...patch }));
 
-  const filteredPosts = useMemo(() => {
-    if (activeCount === 0) return posts;
+  const filteredAndSortedPosts = useMemo(() => {
+    // First filter
+    const hasAccessFilter =
+      filters.showPublic || filters.showRestricted || filters.showPrivate;
+    const hasAnyFilter =
+      activeCount > 0 && (activeCount > 1 || filters.sortBy !== "date");
+    const filterActive =
+      aliasFilterActive ||
+      filters.categoryId ||
+      hasAccessFilter ||
+      filters.dateFrom ||
+      filters.dateTo ||
+      filters.minLikes !== "";
 
-    return posts.filter((post) => {
-      // OR logic: include post if ANY active filter matches
+    let result = filterActive
+      ? posts.filter((post) => {
+          // OR logic: include post if ANY active filter matches
+          if (aliasFilterActive) {
+            const q = filters.aliasQuery.trim().toLowerCase();
+            const postComments = commentsMap[post.id.toString()] ?? [];
+            const hasMatch = postComments.some((c) =>
+              c.authorAlias.toLowerCase().includes(q),
+            );
+            if (hasMatch) return true;
+          }
 
-      // --- Alias filter ---
-      if (aliasFilterActive) {
-        const q = filters.aliasQuery.trim().toLowerCase();
-        const postComments = commentsMap[post.id.toString()] ?? [];
-        const hasMatch = postComments.some((c) =>
-          c.authorAlias.toLowerCase().includes(q),
-        );
-        if (hasMatch) return true;
-      }
+          if (filters.categoryId) {
+            if (String(post.categoryId) === filters.categoryId) return true;
+          }
 
-      // --- Category filter ---
-      if (filters.categoryId) {
-        if (String(post.categoryId) === filters.categoryId) return true;
-      }
+          const postCategory = categories.find(
+            (c) => String(c.id) === String(post.categoryId),
+          );
+          if (filters.showPublic && postCategory) {
+            if ("Public" in postCategory.accessLevel) return true;
+          }
+          if (filters.showRestricted && postCategory) {
+            if ("Restricted" in postCategory.accessLevel) return true;
+          }
+          if (filters.showPrivate && postCategory) {
+            if ("Private" in postCategory.accessLevel) return true;
+          }
 
-      // --- Access level filter ---
-      const postCategory = categories.find(
-        (c) => String(c.id) === String(post.categoryId),
+          const dateFilterActive = filters.dateFrom || filters.dateTo;
+          if (dateFilterActive) {
+            const postMs = Number(post.createdAt) / 1_000_000;
+            const postDate = new Date(postMs);
+            let inRange = true;
+            if (filters.dateFrom) {
+              inRange = inRange && postDate >= new Date(filters.dateFrom);
+            }
+            if (filters.dateTo) {
+              const to = new Date(filters.dateTo);
+              to.setHours(23, 59, 59, 999);
+              inRange = inRange && postDate <= to;
+            }
+            if (inRange) return true;
+          }
+
+          if (filters.minLikes !== "") {
+            const min = Number(filters.minLikes);
+            if (!Number.isNaN(min) && (post.reactions ?? []).length >= min)
+              return true;
+          }
+
+          return false;
+        })
+      : [...posts];
+
+    // Then sort
+    if (filters.sortBy === "mostComments") {
+      result = result.sort(
+        (a, b) =>
+          (commentsMap[b.id.toString()]?.length ?? 0) -
+          (commentsMap[a.id.toString()]?.length ?? 0),
       );
-      if (filters.showRestricted && postCategory) {
-        if ("Restricted" in postCategory.accessLevel) return true;
-      }
-      if (filters.showPrivate && postCategory) {
-        if ("Private" in postCategory.accessLevel) return true;
-      }
+    } else if (filters.sortBy === "mostFollowers") {
+      result = result.sort(
+        (a, b) =>
+          (followerCountMap[b.authorPrincipal.toString()] ?? 0) -
+          (followerCountMap[a.authorPrincipal.toString()] ?? 0),
+      );
+    } else if (filters.sortBy === "mostViews") {
+      result = result.sort((a, b) => Number(b.viewCount) - Number(a.viewCount));
+    } else {
+      // date (default) -- newest first
+      result = result.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
+    }
 
-      // --- Date range filter ---
-      const dateFilterActive = filters.dateFrom || filters.dateTo;
-      if (dateFilterActive) {
-        const postMs = Number(post.createdAt) / 1_000_000;
-        const postDate = new Date(postMs);
-        let inRange = true;
-        if (filters.dateFrom) {
-          inRange = inRange && postDate >= new Date(filters.dateFrom);
-        }
-        if (filters.dateTo) {
-          const to = new Date(filters.dateTo);
-          to.setHours(23, 59, 59, 999);
-          inRange = inRange && postDate <= to;
-        }
-        if (inRange) return true;
-      }
-
-      // --- Min likes filter ---
-      if (filters.minLikes !== "") {
-        const min = Number(filters.minLikes);
-        if (!Number.isNaN(min) && post.reactions.length >= min) return true;
-      }
-
-      return false;
-    });
-  }, [posts, filters, activeCount, aliasFilterActive, commentsMap, categories]);
+    void hasAnyFilter; // suppress unused warning
+    return result;
+  }, [
+    posts,
+    filters,
+    activeCount,
+    aliasFilterActive,
+    commentsMap,
+    categories,
+    followerCountMap,
+  ]);
 
   const isFiltered = activeCount > 0;
 
@@ -316,7 +420,7 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
             <>
               Visar{" "}
               <span className="text-foreground font-medium">
-                {filteredPosts.length}
+                {filteredAndSortedPosts.length}
               </span>{" "}
               av{" "}
               <span className="text-foreground font-medium">
@@ -368,7 +472,7 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
             Skapa ditt första inlägg
           </Button>
         </motion.div>
-      ) : filteredPosts.length === 0 ? (
+      ) : filteredAndSortedPosts.length === 0 ? (
         <motion.div
           data-ocid="posts.empty_state"
           initial={{ opacity: 0, y: 16 }}
@@ -397,11 +501,15 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
       ) : (
         <AnimatePresence>
           <div className="space-y-4">
-            {filteredPosts.map((post, i) => (
+            {filteredAndSortedPosts.map((post, i) => (
               <PostCard
                 key={String(post.id)}
                 post={post}
                 index={i}
+                commentCount={commentsMap[post.id.toString()]?.length ?? 0}
+                followerCount={
+                  followerCountMap[post.authorPrincipal.toString()] ?? 0
+                }
                 onEdit={() => onNavigate({ type: "edit", postId: post.id })}
                 onView={() => onNavigate({ type: "post", postId: post.id })}
               />

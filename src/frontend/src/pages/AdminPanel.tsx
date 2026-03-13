@@ -83,14 +83,15 @@ import {
   useUpdateCategory,
   useUpdateUserAlias,
 } from "../hooks/useQueries";
+import { useLanguage } from "../i18n/LanguageContext";
 import type { NavigateFn } from "../types";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-function accessLevelLabel(level: AccessLevel): string {
-  if ("Public" in level) return "Offentlig";
-  if ("Restricted" in level) return "Begränsad";
-  return "Privat";
+function accessLevelLabel(level: AccessLevel, t: (k: any) => string): string {
+  if ("Public" in level) return t("admin_access_public");
+  if ("Restricted" in level) return t("admin_access_restricted");
+  return t("admin_access_private");
 }
 
 function accessLevelColor(level: AccessLevel): string {
@@ -115,7 +116,7 @@ function accessLevelToString(level: AccessLevel): string {
 
 function truncatePrincipal(p: string): string {
   if (p.length <= 20) return p;
-  return `${p.slice(0, 10)}…${p.slice(-6)}`;
+  return `${p.slice(0, 10)}\u2026${p.slice(-6)}`;
 }
 
 function formatDate(ts: bigint): string {
@@ -129,15 +130,15 @@ function formatDate(ts: bigint): string {
 
 function translateAction(action: string): string {
   const map: Record<string, string> = {
-    block_user: "Blockerade användare",
-    unblock_user: "Avblockerade användare",
+    block_user: "Blockerade anv\u00e4ndare",
+    unblock_user: "Avblockerade anv\u00e4ndare",
     alias_update: "Uppdaterade alias",
-    block: "Blockerat innehåll",
+    block: "Blockerat inneh\u00e5ll",
   };
   return map[action] ?? action;
 }
 
-// ─── CategoryForm ─────────────────────────────────────────────────────────────
+// ─── CategoryForm ───────────────────────────────────────────────────────────────
 
 interface CategoryFormValues {
   name: string;
@@ -156,6 +157,7 @@ function CategoryForm({
   isPending: boolean;
   submitLabel: string;
 }) {
+  const { t } = useLanguage();
   const [name, setName] = useState(initial.name);
   const [description, setDescription] = useState(initial.description);
   const [accessLevel, setAccessLevel] = useState(initial.accessLevel);
@@ -164,33 +166,33 @@ function CategoryForm({
     <div className="space-y-4">
       <div className="space-y-1.5">
         <Label htmlFor="cat-name" className="font-body text-sm">
-          Namn
+          {t("admin_col_name")}
         </Label>
         <Input
           id="cat-name"
           data-ocid="admin.category_name.input"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="T.ex. Vänner"
+          placeholder="T.ex. V\u00e4nner"
           className="font-body"
         />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="cat-desc" className="font-body text-sm">
-          Beskrivning
+          {t("cat_description")}
         </Label>
         <Input
           id="cat-desc"
           data-ocid="admin.category_desc.input"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Kort beskrivning…"
+          placeholder="Kort beskrivning\u2026"
           className="font-body"
         />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="cat-access" className="font-body text-sm">
-          Åtkomstnivå
+          {t("cat_access_level")}
         </Label>
         <Select value={accessLevel} onValueChange={setAccessLevel}>
           <SelectTrigger
@@ -201,9 +203,9 @@ function CategoryForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="Public">Offentlig</SelectItem>
-            <SelectItem value="Restricted">Begränsad</SelectItem>
-            <SelectItem value="Private">Privat</SelectItem>
+            <SelectItem value="Public">{t("cat_public")}</SelectItem>
+            <SelectItem value="Restricted">{t("cat_restricted")}</SelectItem>
+            <SelectItem value="Private">{t("cat_private")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -222,9 +224,10 @@ function CategoryForm({
   );
 }
 
-// ─── AddReaderDialog ──────────────────────────────────────────────────────────
+// ─── AddReaderDialog ────────────────────────────────────────────────────────────
 
 function AddReaderDialog({ category }: { category: Category }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [alias, setAlias] = useState("");
   const [principalStr, setPrincipalStr] = useState("");
@@ -257,7 +260,7 @@ function AddReaderDialog({ category }: { category: Category }) {
       setPrincipalStr("");
       setOpen(false);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Något gick fel");
+      toast.error(err instanceof Error ? err.message : "N\u00e5got gick fel");
     }
   };
 
@@ -270,19 +273,19 @@ function AddReaderDialog({ category }: { category: Category }) {
           className="font-body text-xs gap-1.5"
         >
           <ChevronDown className="w-3.5 h-3.5" />
-          Läsare ({category.readerList.length})
+          {t("admin_readers_label")} ({category.readerList.length})
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="font-display">
-            Hantera läsare – {category.name}
+            {t("admin_add_reader")} \u2013 {category.name}
           </DialogTitle>
         </DialogHeader>
         {category.readerList.length > 0 && (
           <div className="mb-2">
             <p className="text-xs font-body font-semibold text-foreground/70 uppercase tracking-wider mb-2">
-              Nuvarande läsare
+              Nuvarande l\u00e4sare
             </p>
             <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
               {category.readerList.map((p) => (
@@ -299,21 +302,21 @@ function AddReaderDialog({ category }: { category: Category }) {
         )}
         <div className="space-y-3 pt-2 border-t border-border">
           <p className="text-xs font-body font-semibold text-foreground/70 uppercase tracking-wider">
-            Lägg till läsare
+            {t("admin_add_reader")}
           </p>
           <div className="space-y-2">
             <Input
               data-ocid="admin.reader_alias.input"
               value={alias}
               onChange={(e) => setAlias(e.target.value)}
-              placeholder="Alias"
+              placeholder={t("admin_add_reader_alias")}
               className="font-body text-sm"
             />
             <Input
               data-ocid="admin.reader_principal.input"
               value={principalStr}
               onChange={(e) => setPrincipalStr(e.target.value)}
-              placeholder="Principal-ID"
+              placeholder={t("admin_add_reader_principal")}
               className="font-body text-sm font-mono"
             />
           </div>
@@ -329,7 +332,7 @@ function AddReaderDialog({ category }: { category: Category }) {
             ) : (
               <Plus className="w-4 h-4 mr-2" />
             )}
-            Lägg till
+            {t("admin_add_reader_save")}
           </Button>
         </div>
       </DialogContent>
@@ -337,9 +340,10 @@ function AddReaderDialog({ category }: { category: Category }) {
   );
 }
 
-// ─── Tab: Kategorier ──────────────────────────────────────────────────────────
+// ─── Tab: Kategorier ────────────────────────────────────────────────────────────
 
 function KategorierTab() {
+  const { t } = useLanguage();
   const { data: categories = [], isLoading } = useCategories();
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
@@ -348,33 +352,33 @@ function KategorierTab() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Category | null>(null);
 
-  const handleCreate = async (v: CategoryFormValues) => {
+  const handleCreate = async (values: CategoryFormValues) => {
     try {
       await createCategory.mutateAsync({
-        name: v.name.trim(),
-        description: v.description.trim(),
-        accessLevel: accessLevelFromString(v.accessLevel),
+        name: values.name,
+        description: values.description,
+        accessLevel: accessLevelFromString(values.accessLevel),
       });
       toast.success("Kategori skapad");
       setCreateOpen(false);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Något gick fel");
+      toast.error(err instanceof Error ? err.message : "N\u00e5got gick fel");
     }
   };
 
-  const handleUpdate = async (v: CategoryFormValues) => {
+  const handleUpdate = async (values: CategoryFormValues) => {
     if (!editTarget) return;
     try {
       await updateCategory.mutateAsync({
         id: editTarget.id,
-        name: v.name.trim(),
-        description: v.description.trim(),
-        accessLevel: accessLevelFromString(v.accessLevel),
+        name: values.name,
+        description: values.description,
+        accessLevel: accessLevelFromString(values.accessLevel),
       });
       toast.success("Kategori uppdaterad");
       setEditTarget(null);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Något gick fel");
+      toast.error(err instanceof Error ? err.message : "N\u00e5got gick fel");
     }
   };
 
@@ -383,7 +387,7 @@ function KategorierTab() {
       await deleteCategory.mutateAsync(cat.id);
       toast.success(`"${cat.name}" har tagits bort`);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Något gick fel");
+      toast.error(err instanceof Error ? err.message : "N\u00e5got gick fel");
     }
   };
 
@@ -391,7 +395,7 @@ function KategorierTab() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <p className="font-body text-sm text-muted-foreground">
-          {categories.length} kategorier totalt
+          {categories.length} {t("admin_categories_total")}
         </p>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
@@ -400,18 +404,20 @@ function KategorierTab() {
               size="sm"
               className="bg-primary text-primary-foreground hover:bg-primary/90 font-body gap-1.5"
             >
-              <Plus className="w-4 h-4" /> Ny kategori
+              <Plus className="w-4 h-4" /> {t("admin_new_category")}
             </Button>
           </DialogTrigger>
           <DialogContent data-ocid="admin.new_category.dialog">
             <DialogHeader>
-              <DialogTitle className="font-display">Skapa kategori</DialogTitle>
+              <DialogTitle className="font-display">
+                {t("admin_create_category")}
+              </DialogTitle>
             </DialogHeader>
             <CategoryForm
               initial={{ name: "", description: "", accessLevel: "Public" }}
               onSubmit={handleCreate}
               isPending={createCategory.isPending}
-              submitLabel="Skapa"
+              submitLabel={t("admin_create_category")}
             />
           </DialogContent>
         </Dialog>
@@ -428,7 +434,7 @@ function KategorierTab() {
           data-ocid="admin.categories.empty_state"
           className="text-center py-16 text-muted-foreground font-body"
         >
-          Inga kategorier hittades.
+          {t("admin_no_categories")}
         </div>
       ) : (
         <Card className="border-border">
@@ -436,19 +442,19 @@ function KategorierTab() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="font-body font-semibold text-foreground/70">
-                  Namn
+                  {t("admin_col_name")}
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70">
-                  Beskrivning
+                  {t("admin_col_description")}
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70">
-                  Åtkomstnivå
+                  {t("admin_col_access")}
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70">
-                  Läsare
+                  {t("admin_col_readers")}
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70 text-right">
-                  Åtgärder
+                  {t("admin_col_actions")}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -463,13 +469,13 @@ function KategorierTab() {
                     {cat.name}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm max-w-xs truncate">
-                    {cat.description || "–"}
+                    {cat.description || "\u2013"}
                   </TableCell>
                   <TableCell>
                     <Badge
                       className={`text-xs font-body border ${accessLevelColor(cat.accessLevel)}`}
                     >
-                      {accessLevelLabel(cat.accessLevel)}
+                      {accessLevelLabel(cat.accessLevel, t)}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -477,7 +483,9 @@ function KategorierTab() {
                     "Private" in cat.accessLevel ? (
                       <AddReaderDialog category={cat} />
                     ) : (
-                      <span className="text-muted-foreground text-sm">–</span>
+                      <span className="text-muted-foreground text-sm">
+                        \u2013
+                      </span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
@@ -499,7 +507,7 @@ function KategorierTab() {
                         <DialogContent>
                           <DialogHeader>
                             <DialogTitle className="font-display">
-                              Redigera kategori
+                              {t("admin_edit_category")}
                             </DialogTitle>
                           </DialogHeader>
                           {editTarget && (
@@ -513,7 +521,7 @@ function KategorierTab() {
                               }}
                               onSubmit={handleUpdate}
                               isPending={updateCategory.isPending}
-                              submitLabel="Spara"
+                              submitLabel={t("admin_save")}
                             />
                           )}
                         </DialogContent>
@@ -533,14 +541,10 @@ function KategorierTab() {
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle className="font-display">
-                              Ta bort kategori?
+                              {t("admin_delete_category")}
                             </AlertDialogTitle>
                             <AlertDialogDescription className="font-body">
-                              Är du säker på att du vill ta bort kategorin{" "}
-                              <span className="font-semibold">
-                                "{cat.name}"
-                              </span>
-                              ? Denna åtgärd kan inte ångras.
+                              {t("admin_delete_category_confirm")}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -548,14 +552,14 @@ function KategorierTab() {
                               data-ocid="admin.delete_category.cancel_button"
                               className="font-body"
                             >
-                              Avbryt
+                              {t("admin_cancel")}
                             </AlertDialogCancel>
                             <AlertDialogAction
                               data-ocid="admin.delete_category.confirm_button"
                               className="font-body bg-rose-600 hover:bg-rose-700 text-white"
                               onClick={() => handleDelete(cat)}
                             >
-                              Ta bort
+                              {t("admin_delete")}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -572,9 +576,10 @@ function KategorierTab() {
   );
 }
 
-// ─── Tab: Användare ────────────────────────────────────────────────────────────
+// ─── Tab: Användare ────────────────────────────────────────────────────────────────
 
 function AnvandareTab() {
+  const { t } = useLanguage();
   const { data: users = [], isLoading: usersLoading } = useAllUsers();
   const { data: blockedPrincipals = [], isLoading: blockedLoading } =
     useBlockedUsers();
@@ -600,18 +605,18 @@ function AnvandareTab() {
   const handleBlock = async (user: UserProfile) => {
     try {
       await blockUser.mutateAsync(user.principalId);
-      toast.success(`${user.alias || "Användaren"} har blockerats.`);
+      toast.success(`${user.alias || "Anv\u00e4ndaren"} har blockerats.`);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Något gick fel");
+      toast.error(err instanceof Error ? err.message : "N\u00e5got gick fel");
     }
   };
 
   const handleUnblock = async (user: UserProfile) => {
     try {
       await unblockUser.mutateAsync(user.principalId);
-      toast.success(`${user.alias || "Användaren"} har avblockerats.`);
+      toast.success(`${user.alias || "Anv\u00e4ndaren"} har avblockerats.`);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Något gick fel");
+      toast.error(err instanceof Error ? err.message : "N\u00e5got gick fel");
     }
   };
 
@@ -625,7 +630,7 @@ function AnvandareTab() {
       toast.success("Alias uppdaterat");
       setEditAliasUser(null);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Något gick fel");
+      toast.error(err instanceof Error ? err.message : "N\u00e5got gick fel");
     }
   };
 
@@ -633,7 +638,7 @@ function AnvandareTab() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <p className="font-body text-sm text-muted-foreground">
-          {users.length} användare totalt
+          {users.length} {t("admin_users_total")}
         </p>
         <div className="relative w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -641,7 +646,7 @@ function AnvandareTab() {
             data-ocid="admin.users.search_input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Sök alias eller principal…"
+            placeholder={t("admin_search_users")}
             className="pl-9 font-body text-sm"
           />
         </div>
@@ -658,9 +663,7 @@ function AnvandareTab() {
           data-ocid="admin.users.empty_state"
           className="text-center py-16 text-muted-foreground font-body"
         >
-          {search
-            ? "Inga användare matchar sökningen."
-            : "Inga registrerade användare hittades."}
+          {search ? t("admin_no_users_search") : t("admin_no_users")}
         </div>
       ) : (
         <Card className="border-border">
@@ -668,19 +671,19 @@ function AnvandareTab() {
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="font-body font-semibold text-foreground/70">
-                  Alias
+                  {t("admin_col_alias")}
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70">
-                  Principal-ID
+                  {t("admin_col_principal")}
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70">
-                  Status
+                  {t("admin_col_status")}
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70">
-                  Skapad
+                  {t("admin_col_created")}
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70 text-right">
-                  Åtgärder
+                  {t("admin_col_actions")}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -698,7 +701,7 @@ function AnvandareTab() {
                     <TableCell className="font-semibold text-foreground">
                       {user.alias || (
                         <span className="text-muted-foreground italic text-sm">
-                          Inget alias
+                          {t("admin_no_alias")}
                         </span>
                       )}
                     </TableCell>
@@ -713,7 +716,7 @@ function AnvandareTab() {
                           className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
                           onClick={() => {
                             navigator.clipboard.writeText(principalStr);
-                            toast.success("Principal-ID kopierat");
+                            toast.success(t("admin_copied"));
                           }}
                         >
                           <Copy className="w-3 h-3" />
@@ -728,7 +731,7 @@ function AnvandareTab() {
                             : "bg-emerald-100 text-emerald-800 border-emerald-200"
                         }`}
                       >
-                        {isBlocked ? "Blockerad" : "Aktiv"}
+                        {isBlocked ? t("admin_blocked") : t("admin_active")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -736,7 +739,6 @@ function AnvandareTab() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {/* Edit alias */}
                         <Dialog
                           open={
                             editAliasUser?.principalId.toString() ===
@@ -762,7 +764,7 @@ function AnvandareTab() {
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle className="font-display">
-                                Redigera alias
+                                {t("admin_edit_alias")}
                               </DialogTitle>
                             </DialogHeader>
                             <div className="space-y-3">
@@ -777,7 +779,7 @@ function AnvandareTab() {
                                   data-ocid="admin.users.alias_input"
                                   value={newAlias}
                                   onChange={(e) => setNewAlias(e.target.value)}
-                                  placeholder="Ange alias…"
+                                  placeholder="Ange alias\u2026"
                                   className="font-body"
                                   onKeyDown={(e) =>
                                     e.key === "Enter" && handleSaveAlias()
@@ -789,21 +791,18 @@ function AnvandareTab() {
                               <Button
                                 data-ocid="admin.users.save_button"
                                 onClick={handleSaveAlias}
-                                disabled={
-                                  updateAlias.isPending || !newAlias.trim()
-                                }
+                                disabled={updateAlias.isPending}
                                 className="bg-primary text-primary-foreground hover:bg-primary/90 font-body"
                               >
                                 {updateAlias.isPending ? (
                                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                                 ) : null}
-                                Spara
+                                {t("admin_save")}
                               </Button>
                             </DialogFooter>
                           </DialogContent>
                         </Dialog>
 
-                        {/* Block / Unblock */}
                         {isBlocked ? (
                           <Button
                             data-ocid={`admin.users.unblock_button.${i + 1}`}
@@ -830,15 +829,10 @@ function AnvandareTab() {
                             <AlertDialogContent data-ocid="admin.block_user.dialog">
                               <AlertDialogHeader>
                                 <AlertDialogTitle className="font-display">
-                                  Blockera användare?
+                                  {t("admin_block")}
                                 </AlertDialogTitle>
                                 <AlertDialogDescription className="font-body">
-                                  Är du säker på att du vill blockera{" "}
-                                  <span className="font-semibold">
-                                    {user.alias || "denna användare"}
-                                  </span>
-                                  ? Användaren kommer inte längre kunna använda
-                                  tjänsten.
+                                  {t("admin_block_confirm")}
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
@@ -846,14 +840,14 @@ function AnvandareTab() {
                                   data-ocid="admin.block_user.cancel_button"
                                   className="font-body"
                                 >
-                                  Avbryt
+                                  {t("admin_cancel")}
                                 </AlertDialogCancel>
                                 <AlertDialogAction
                                   data-ocid="admin.block_user.confirm_button"
                                   className="font-body bg-rose-600 hover:bg-rose-700 text-white"
                                   onClick={() => handleBlock(user)}
                                 >
-                                  Ja, blockera
+                                  {t("admin_block_yes")}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
@@ -872,9 +866,10 @@ function AnvandareTab() {
   );
 }
 
-// ─── Tab: Moderering ──────────────────────────────────────────────────────────
+// ─── Tab: Moderering ──────────────────────────────────────────────────────────────
 
 function ModereringTab() {
+  const { t } = useLanguage();
   const { data: logs = [], isLoading } = useModerationLogs();
 
   const sorted = [...logs].sort((a, b) => Number(b.timestamp - a.timestamp));
@@ -882,7 +877,7 @@ function ModereringTab() {
   return (
     <div className="space-y-5">
       <p className="font-body text-sm text-muted-foreground">
-        {logs.length} loggposter totalt
+        {logs.length} {t("admin_moderation_total")}
       </p>
 
       {isLoading ? (
@@ -896,7 +891,7 @@ function ModereringTab() {
           data-ocid="admin.moderation.empty_state"
           className="text-center py-16 text-muted-foreground font-body"
         >
-          Inga modereringsloggar hittades.
+          {t("admin_no_logs")}
         </div>
       ) : (
         <Card className="border-border">
@@ -924,7 +919,7 @@ function ModereringTab() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sorted.map((log: ModerationLog, _i) => (
+              {sorted.map((log: ModerationLog) => (
                 <TableRow key={String(log.id)} className="font-body">
                   <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                     {formatDate(log.timestamp)}
@@ -940,13 +935,13 @@ function ModereringTab() {
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {log.targetUser.length > 0
                       ? truncatePrincipal(log.targetUser[0]!.toString())
-                      : "–"}
+                      : "\u2013"}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {log.contentType || "–"}
+                    {log.contentType || "\u2013"}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
-                    {log.snippet || log.reason || "–"}
+                    {log.snippet || log.reason || "\u2013"}
                   </TableCell>
                 </TableRow>
               ))}
@@ -958,9 +953,10 @@ function ModereringTab() {
   );
 }
 
-// ─── Tab: Inlägg ──────────────────────────────────────────────────────────────
+// ─── Tab: Inlägg ────────────────────────────────────────────────────────────────
 
 function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
+  const { t } = useLanguage();
   const { data: posts = [], isLoading } = useAllPosts();
   const { data: categories = [] } = useCategories();
   const deletePost = useDeletePost();
@@ -982,7 +978,7 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
       await deletePost.mutateAsync(post.id);
       toast.success(`"${post.title}" har tagits bort`);
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Något gick fel");
+      toast.error(err instanceof Error ? err.message : "N\u00e5got gick fel");
     }
   };
 
@@ -990,7 +986,7 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <p className="font-body text-sm text-muted-foreground">
-          {posts.length} inlägg totalt
+          {posts.length} {t("admin_posts_total")}
         </p>
         <div className="relative w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -998,7 +994,7 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
             data-ocid="admin.posts.search_input"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Sök titel eller författare…"
+            placeholder={t("admin_search_posts")}
             className="pl-9 font-body text-sm"
           />
         </div>
@@ -1015,9 +1011,7 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
           data-ocid="admin.posts.empty_state"
           className="text-center py-16 text-muted-foreground font-body"
         >
-          {search
-            ? "Inga inlägg matchar sökningen."
-            : "Inga publicerade inlägg hittades."}
+          {search ? t("admin_no_posts_search") : t("admin_no_posts")}
         </div>
       ) : (
         <Card className="border-border">
@@ -1034,13 +1028,13 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
                   Kategori
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70">
-                  Status
+                  {t("admin_col_status")}
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70">
                   Datum
                 </TableHead>
                 <TableHead className="font-body font-semibold text-foreground/70 text-right">
-                  Åtgärder
+                  {t("admin_col_actions")}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -1055,7 +1049,7 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
                     {post.title}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {post.authorAlias || "–"}
+                    {post.authorAlias || "\u2013"}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {categoryMap.get(String(post.categoryId)) ??
@@ -1069,7 +1063,9 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
                           : "bg-muted text-muted-foreground border-border"
                       }`}
                     >
-                      {"Published" in post.status ? "Publicerad" : "Utkast"}
+                      {"Published" in post.status
+                        ? t("my_posts_published")
+                        : t("my_posts_draft")}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
@@ -1103,14 +1099,10 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
                         <AlertDialogContent>
                           <AlertDialogHeader>
                             <AlertDialogTitle className="font-display">
-                              Ta bort inlägg?
+                              {t("my_posts_delete_title")}
                             </AlertDialogTitle>
                             <AlertDialogDescription className="font-body">
-                              Är du säker på att du vill ta bort inlägget{" "}
-                              <span className="font-semibold">
-                                "{post.title}"
-                              </span>
-                              ? Denna åtgärd kan inte ångras.
+                              {t("my_posts_delete_desc")}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -1118,14 +1110,14 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
                               data-ocid="admin.delete_post.cancel_button"
                               className="font-body"
                             >
-                              Avbryt
+                              {t("admin_cancel")}
                             </AlertDialogCancel>
                             <AlertDialogAction
                               data-ocid="admin.delete_post.confirm_button"
                               className="font-body bg-rose-600 hover:bg-rose-700 text-white"
                               onClick={() => handleDelete(post)}
                             >
-                              Ta bort
+                              {t("admin_delete")}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -1142,32 +1134,34 @@ function InlaggTab({ onNavigate }: { onNavigate: NavigateFn }) {
   );
 }
 
-// ─── AdminPanel ───────────────────────────────────────────────────────────────
+// ─── AdminPanel ──────────────────────────────────────────────────────────────────────
 
 interface AdminPanelProps {
   onNavigate: NavigateFn;
 }
 
 export default function AdminPanel({ onNavigate }: AdminPanelProps) {
+  const { t } = useLanguage();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className="max-w-6xl mx-auto px-4 py-10"
+      className="space-y-8"
     >
       {/* Header */}
-      <div className="mb-8">
+      <div className="border-b border-border pb-6">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
+          <div className="w-9 h-9 rounded-xl bg-primary/15 flex items-center justify-center">
             <Settings className="w-5 h-5 text-primary" />
           </div>
-          <h1 className="font-display text-3xl font-bold text-foreground">
-            Adminpanel
+          <h1 className="font-display text-2xl font-bold text-foreground">
+            {t("admin_title")}
           </h1>
         </div>
-        <p className="font-body text-muted-foreground">
-          Hantera kategorier, användare, moderering och inlägg.
+        <p className="font-body text-sm text-muted-foreground">
+          {t("admin_subtitle")}
         </p>
       </div>
 
@@ -1180,7 +1174,7 @@ export default function AdminPanel({ onNavigate }: AdminPanelProps) {
             className="font-body text-sm rounded-lg gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <BookOpen className="w-4 h-4" />
-            Kategorier
+            {t("admin_tab_categories")}
           </TabsTrigger>
           <TabsTrigger
             data-ocid="admin.anvandare.tab"
@@ -1188,7 +1182,7 @@ export default function AdminPanel({ onNavigate }: AdminPanelProps) {
             className="font-body text-sm rounded-lg gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <Users className="w-4 h-4" />
-            Användare
+            {t("admin_tab_users")}
           </TabsTrigger>
           <TabsTrigger
             data-ocid="admin.moderering.tab"
@@ -1196,7 +1190,7 @@ export default function AdminPanel({ onNavigate }: AdminPanelProps) {
             className="font-body text-sm rounded-lg gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <ClipboardList className="w-4 h-4" />
-            Moderering
+            {t("admin_tab_moderation")}
           </TabsTrigger>
           <TabsTrigger
             data-ocid="admin.inlagg.tab"
@@ -1204,7 +1198,7 @@ export default function AdminPanel({ onNavigate }: AdminPanelProps) {
             className="font-body text-sm rounded-lg gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <FileText className="w-4 h-4" />
-            Inlägg
+            {t("admin_tab_posts")}
           </TabsTrigger>
         </TabsList>
 

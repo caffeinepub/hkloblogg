@@ -37,6 +37,7 @@ import { AnimatePresence, motion } from "motion/react";
 import React, { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { Post } from "./backend.d";
+import LanguageSwitcher from "./components/LanguageSwitcher";
 import NotificationBell from "./components/NotificationBell";
 import { useActor } from "./hooks/useActor";
 import { useInternetIdentity } from "./hooks/useInternetIdentity";
@@ -50,6 +51,7 @@ import {
   useSetAlias,
   useUserProfile,
 } from "./hooks/useQueries";
+import { useLanguage } from "./i18n/LanguageContext";
 import AdminPanel from "./pages/AdminPanel";
 import MyPosts from "./pages/MyPosts";
 import PostEditor from "./pages/PostEditor";
@@ -57,7 +59,6 @@ import PostView from "./pages/PostView";
 import UserProfile from "./pages/UserProfile";
 import type { AppView, NavigateFn } from "./types";
 
-// Suppress unused import lint warning for Bell (used in NotificationBell)
 void Bell;
 
 class ErrorBoundary extends React.Component<
@@ -161,6 +162,7 @@ function PostCard({
 }
 
 function EmptyState() {
+  const { t } = useLanguage();
   return (
     <motion.div
       data-ocid="posts.empty_state"
@@ -172,28 +174,19 @@ function EmptyState() {
         <BookOpen className="w-9 h-9 text-primary" />
       </div>
       <h3 className="font-display text-xl font-bold text-foreground mb-2">
-        Inga publicerade inlägg ännu
+        {t("home_no_posts")}
       </h3>
       <p className="text-muted-foreground font-body text-sm max-w-xs">
-        Bli den första att dela din historia!
+        {t("home_be_first")}
       </p>
     </motion.div>
   );
 }
 
-// ─── Profile Dropdown ────────────────────────────────────────────────────────
+// ─── Profile Dropdown ─────────────────────────────────────────────────────────
 function ProfileDropdown({ principal }: { principal: string }) {
-  const principalObj = React.useMemo(() => {
-    try {
-      // We pass the Principal object from identity directly
-      return null;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  // Use identity's principal directly via the hook
   const { identity } = useInternetIdentity();
+  const { t } = useLanguage();
   const principalId = identity?.getPrincipal() ?? null;
 
   const { data: profile } = useUserProfile(principalId);
@@ -205,12 +198,10 @@ function ProfileDropdown({ principal }: { principal: string }) {
   const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(false);
 
-  // Sync alias input when profile loads
   useEffect(() => {
     if (profile?.alias) {
       setAliasInput(profile.alias);
     } else {
-      // Try localStorage fallback
       const stored = localStorage.getItem("hklo_alias");
       if (stored) setAliasInput(stored);
     }
@@ -232,14 +223,11 @@ function ProfileDropdown({ principal }: { principal: string }) {
     if (!trimmed) return;
     try {
       await setAlias.mutateAsync(trimmed);
-      toast.success("Alias sparat!");
+      toast.success(t("profile_dd_alias_saved"));
     } catch {
-      toast.error("Kunde inte spara alias");
+      toast.error(t("profile_dd_alias_error"));
     }
   };
-
-  // Suppress unused variable warning
-  void principalObj;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -261,91 +249,98 @@ function ProfileDropdown({ principal }: { principal: string }) {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="bg-accent/40 px-4 py-3 border-b border-border">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-              <User className="w-4.5 h-4.5 text-primary" />
+        <div className="px-4 py-3 bg-accent/30 border-b border-border">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-base font-bold font-display text-primary">
+              {displayName.charAt(0).toUpperCase()}
             </div>
-            <div>
-              <p className="font-display font-bold text-sm text-foreground">
-                Min Profil
+            <div className="flex-1 min-w-0">
+              <p className="font-display font-bold text-sm text-foreground truncate">
+                {displayName}
               </p>
-              <p className="font-body text-xs text-muted-foreground">
-                {followers.length} följare · {following.length} följda
-              </p>
+              <div className="flex items-center gap-3 text-xs font-body text-muted-foreground mt-0.5">
+                <span>
+                  <strong className="text-foreground">
+                    {followers.length}
+                  </strong>{" "}
+                  {t("profile_dd_followers")}
+                </span>
+                <span>
+                  <strong className="text-foreground">
+                    {following.length}
+                  </strong>{" "}
+                  {t("profile_dd_following")}
+                </span>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="p-4 space-y-4">
-          {/* Principal ID */}
-          <div className="space-y-1.5">
-            <Label className="font-body text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Principal ID
-            </Label>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 bg-muted rounded-lg px-3 py-2 overflow-hidden">
-                <p className="font-mono text-xs text-foreground/80 break-all leading-relaxed">
-                  {principal}
-                </p>
-              </div>
-              <button
-                type="button"
-                data-ocid="profile.principal.copy_button"
-                onClick={handleCopy}
-                className="shrink-0 p-2 rounded-lg bg-muted hover:bg-accent transition-colors"
-                aria-label="Kopiera Principal ID"
-              >
-                {copied ? (
-                  <Check className="w-3.5 h-3.5 text-green-600" />
-                ) : (
-                  <ClipboardCopy className="w-3.5 h-3.5 text-muted-foreground" />
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="border-t border-border" />
-
-          {/* Alias */}
-          <div className="space-y-1.5">
-            <Label
-              htmlFor="alias-input"
-              className="font-body text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+        {/* Principal */}
+        <div className="px-4 py-3 border-b border-border">
+          <p className="text-xs font-body font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
+            {t("profile_dd_principal")}
+          </p>
+          <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
+            <code className="font-mono text-xs text-foreground/70 flex-1 truncate">
+              {principal}
+            </code>
+            <button
+              type="button"
+              data-ocid="profile.copy.button"
+              onClick={handleCopy}
+              className="shrink-0 hover:text-primary transition-colors"
+              aria-label="Kopiera Principal-ID"
             >
-              Alias
-            </Label>
-            <div className="flex items-center gap-2">
-              <Input
-                id="alias-input"
-                data-ocid="profile.alias.input"
-                value={aliasInput}
-                onChange={(e) => setAliasInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveAlias();
-                }}
-                placeholder="Ditt alias…"
-                className="font-body text-sm h-9"
-              />
-              <Button
-                data-ocid="profile.alias.save_button"
-                size="sm"
-                onClick={handleSaveAlias}
-                disabled={setAlias.isPending || !aliasInput.trim()}
-                className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-3"
-              >
-                {setAlias.isPending ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  "Spara"
-                )}
-              </Button>
-            </div>
-            <p className="font-body text-xs text-muted-foreground">
-              Visas som författarnamn på dina inlägg.
-            </p>
+              {copied ? (
+                <Check className="w-3.5 h-3.5 text-green-600" />
+              ) : (
+                <ClipboardCopy className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </button>
           </div>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-border" />
+
+        {/* Alias */}
+        <div className="px-4 py-3 space-y-1.5">
+          <Label
+            htmlFor="alias-input"
+            className="font-body text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+          >
+            {t("profile_dd_alias")}
+          </Label>
+          <div className="flex items-center gap-2">
+            <Input
+              id="alias-input"
+              data-ocid="profile.alias.input"
+              value={aliasInput}
+              onChange={(e) => setAliasInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveAlias();
+              }}
+              placeholder={t("profile_dd_alias_placeholder")}
+              className="font-body text-sm h-9"
+            />
+            <Button
+              data-ocid="profile.alias.save_button"
+              size="sm"
+              onClick={handleSaveAlias}
+              disabled={setAlias.isPending || !aliasInput.trim()}
+              className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-3"
+            >
+              {setAlias.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                t("profile_dd_save")
+              )}
+            </Button>
+          </div>
+          <p className="font-body text-xs text-muted-foreground">
+            Visas som författarnamn på dina inlägg.
+          </p>
         </div>
       </PopoverContent>
     </Popover>
@@ -355,8 +350,10 @@ function ProfileDropdown({ principal }: { principal: string }) {
 function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
   const { isInitializing, login, loginStatus, identity } =
     useInternetIdentity();
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [langFilter, setLangFilter] = useState<"all" | "sv" | "en">("all");
 
   const { data: posts = [], isLoading: postsLoading } = usePublishedPosts();
   const { data: categories = [] } = useCategories();
@@ -368,7 +365,6 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
     const category = categories.find(
       (c) => String(c.id) === String(p.categoryId),
     );
-    // Exclude posts in non-public categories (Restricted / Private)
     if (!category || !("Public" in category.accessLevel)) return false;
     const matchQuery = searchQuery
       ? p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -376,7 +372,11 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
       : true;
     const matchCategory =
       selectedCategory === "all" || String(p.categoryId) === selectedCategory;
-    return matchQuery && matchCategory;
+    const matchLang =
+      langFilter === "all" ||
+      (p as any).language === langFilter ||
+      (!(p as any).language && langFilter === "sv");
+    return matchQuery && matchCategory && matchLang;
   });
 
   return (
@@ -398,8 +398,7 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
               </span>
             </h1>
             <p className="font-body text-base md:text-lg text-foreground/70 max-w-xl mx-auto mb-8 leading-relaxed">
-              En plattform för berättelser, tankar och gemenskap. Dela din
-              historia med världen.
+              {t("home_hero_text")}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               {isLoggedIn ? (
@@ -410,7 +409,7 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
                   className="bg-primary text-primary-foreground hover:bg-primary/90 font-body font-semibold px-8"
                 >
                   <PenSquare className="w-5 h-5 mr-2" />
-                  Skapa inlägg
+                  {t("nav_create")}
                 </Button>
               ) : (
                 <Button
@@ -420,10 +419,23 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
                   disabled={isLoggingIn || isInitializing}
                   className="bg-primary text-primary-foreground hover:bg-primary/90 font-body font-semibold px-8"
                 >
-                  {isLoggingIn ? "Loggar in…" : "Logga in för att skriva"}
+                  {isLoggingIn ? t("nav_logging_in") : t("nav_login")}
                 </Button>
               )}
             </div>
+            {!isLoggedIn && (
+              <div className="mt-4">
+                <a
+                  data-ocid="hero.create_identity.link"
+                  href="https://identity.ic0.app/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-body text-muted-foreground hover:text-foreground underline transition-colors"
+                >
+                  {t("home_no_account")}
+                </a>
+              </div>
+            )}
           </motion.div>
         </div>
       </section>
@@ -437,11 +449,11 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
         >
           <div className="flex items-baseline gap-3 mb-8">
             <h2 className="font-display text-2xl font-bold text-foreground tracking-wide uppercase">
-              Senaste berättelserna
+              {t("home_latest_stories")}
             </h2>
             {filteredPosts.length > 0 && (
               <Badge variant="secondary" className="font-body">
-                {filteredPosts.length} inlägg
+                {filteredPosts.length} {t("my_posts_posts")}
               </Badge>
             )}
           </div>
@@ -453,7 +465,7 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
                 value="all"
                 className="font-body"
               >
-                Alla inlägg
+                {t("home_all_posts")}
               </TabsTrigger>
               <TabsTrigger
                 data-ocid="posts.my_feed.tab"
@@ -461,17 +473,17 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
                 className="font-body"
                 disabled={!isLoggedIn}
               >
-                Mitt flöde
+                {t("home_my_feed")}
               </TabsTrigger>
             </TabsList>
 
             {/* Search & Filters */}
-            <div className="flex flex-col sm:flex-row gap-3 mb-8">
+            <div className="flex flex-col sm:flex-row gap-3 mb-6">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
                   data-ocid="posts.search_input"
-                  placeholder="Sök efter berättelser…"
+                  placeholder={`${t("home_latest_stories")}…`}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 font-body bg-card"
@@ -485,10 +497,12 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
                   data-ocid="posts.category.select"
                   className="w-full sm:w-48 font-body bg-card"
                 >
-                  <SelectValue placeholder="Kategori" />
+                  <SelectValue placeholder={t("filter_all_categories")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Alla kategorier</SelectItem>
+                  <SelectItem value="all">
+                    {t("filter_all_categories")}
+                  </SelectItem>
                   {categories.map((cat) => (
                     <SelectItem key={String(cat.id)} value={String(cat.id)}>
                       {cat.name}
@@ -496,85 +510,172 @@ function HomePage({ onNavigate }: { onNavigate: NavigateFn }) {
                   ))}
                 </SelectContent>
               </Select>
+              {/* Language filter */}
+              <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-0.5 border border-border self-start sm:self-auto">
+                {(["all", "sv", "en"] as const).map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    data-ocid={`posts.lang_${lang}.tab`}
+                    onClick={() => setLangFilter(lang)}
+                    className={[
+                      "px-2 py-1 rounded-md text-xs font-body transition-all",
+                      langFilter === lang
+                        ? "bg-background shadow-sm text-foreground font-semibold"
+                        : "text-muted-foreground hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    {lang === "all"
+                      ? t("home_lang_all")
+                      : lang === "sv"
+                        ? "SE"
+                        : "EN"}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <TabsContent value="all">
               {postsLoading ? (
                 <div
                   data-ocid="posts.loading_state"
-                  className="grid grid-cols-1 md:grid-cols-2 gap-6"
+                  className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
                 >
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="bg-card border border-border rounded-xl p-6 space-y-3"
-                    >
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="bg-card rounded-xl p-6 space-y-3">
                       <Skeleton className="h-4 w-20" />
                       <Skeleton className="h-6 w-full" />
+                      <Skeleton className="h-4 w-full" />
                       <Skeleton className="h-4 w-3/4" />
                     </div>
                   ))}
                 </div>
+              ) : filteredPosts.length === 0 ? (
+                <EmptyState />
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {filteredPosts.length > 0 ? (
-                    filteredPosts.map((post, i) => (
-                      <PostCard
-                        key={String(post.id)}
-                        post={post}
-                        index={i}
-                        onNavigate={onNavigate}
-                      />
-                    ))
-                  ) : (
-                    <EmptyState />
-                  )}
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredPosts.map((post, i) => (
+                    <PostCard
+                      key={String(post.id)}
+                      post={post}
+                      index={i}
+                      onNavigate={onNavigate}
+                    />
+                  ))}
                 </div>
               )}
             </TabsContent>
 
             <TabsContent value="feed">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {isLoggedIn ? (
-                  filteredPosts.length > 0 ? (
-                    filteredPosts.map((post, i) => (
-                      <PostCard
-                        key={String(post.id)}
-                        post={post}
-                        index={i}
-                        onNavigate={onNavigate}
-                      />
-                    ))
-                  ) : (
-                    <EmptyState />
-                  )
-                ) : (
-                  <div
-                    data-ocid="feed.empty_state"
-                    className="col-span-full text-center py-20"
-                  >
-                    <p className="font-body text-muted-foreground">
-                      Logga in för att se ditt personliga flöde.
-                    </p>
-                  </div>
-                )}
-              </div>
+              {isLoggedIn ? (
+                <PersonalFeed onNavigate={onNavigate} />
+              ) : (
+                <div
+                  data-ocid="posts.feed.empty_state"
+                  className="py-16 text-center"
+                >
+                  <p className="font-body text-muted-foreground">
+                    {t("home_login_for_feed")}
+                  </p>
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </motion.div>
       </section>
+
+      {/* Footer */}
+      <footer className="border-t border-border py-8 mt-8">
+        <div className="max-w-6xl mx-auto px-4 text-center">
+          <p className="text-xs font-body text-muted-foreground">
+            © {new Date().getFullYear()}. Built with ♥ using{" "}
+            <a
+              href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground transition-colors"
+            >
+              caffeine.ai
+            </a>
+          </p>
+        </div>
+      </footer>
     </main>
+  );
+}
+
+function PersonalFeed({ onNavigate }: { onNavigate: NavigateFn }) {
+  const { data: posts = [], isLoading } = usePublishedPosts();
+  const { data: categories = [] } = useCategories();
+  const { identity } = useInternetIdentity();
+  const { t } = useLanguage();
+
+  const myPrincipal = identity?.getPrincipal().toString();
+
+  const feedPosts = posts.filter((p) => {
+    const category = categories.find(
+      (c) => String(c.id) === String(p.categoryId),
+    );
+    if (!category) return false;
+    if ("Public" in category.accessLevel) return true;
+    if (
+      myPrincipal &&
+      category.readerList.some((r) => r.toString() === myPrincipal)
+    )
+      return true;
+    return false;
+  });
+
+  if (isLoading) {
+    return (
+      <div
+        data-ocid="posts.loading_state"
+        className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3"
+      >
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-card rounded-xl p-6 space-y-3">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-6 w-full" />
+            <Skeleton className="h-4 w-3/4" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (feedPosts.length === 0) {
+    return (
+      <div
+        data-ocid="posts.feed.empty_state"
+        className="py-16 text-center text-muted-foreground font-body"
+      >
+        {t("home_no_posts")}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {feedPosts.map((post, i) => (
+        <PostCard
+          key={String(post.id)}
+          post={post}
+          index={i}
+          onNavigate={onNavigate}
+        />
+      ))}
+    </div>
   );
 }
 
 // ─── Global search dropdown ───────────────────────────────────────────────────
 function GlobalSearch({ onNavigate }: { onNavigate: NavigateFn }) {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { data: results = [], isFetching } = useSearchPosts(query);
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
@@ -588,7 +689,6 @@ function GlobalSearch({ onNavigate }: { onNavigate: NavigateFn }) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -611,7 +711,7 @@ function GlobalSearch({ onNavigate }: { onNavigate: NavigateFn }) {
             setOpen(true);
           }}
           onFocus={() => setOpen(true)}
-          placeholder="Sök inlägg, författare…"
+          placeholder={t("nav_search_placeholder")}
           className="pl-9 h-9 font-body text-sm bg-background border-border"
         />
         {query && (
@@ -650,7 +750,7 @@ function GlobalSearch({ onNavigate }: { onNavigate: NavigateFn }) {
               </div>
             ) : results.length === 0 ? (
               <div className="p-4 text-center text-sm font-body text-muted-foreground">
-                Inga resultat för "{query}"
+                {t("nav_no_results")} "{query}"
               </div>
             ) : (
               <ul className="max-h-72 overflow-y-auto py-1">
@@ -689,13 +789,12 @@ function GlobalSearch({ onNavigate }: { onNavigate: NavigateFn }) {
 }
 
 function AppInner() {
-  // Fire-and-forget: seed default categories once actor is ready
   useInitDefaultCategories();
-  // Actor needed for useSearchPosts inside GlobalSearch — kept top-level
   useActor();
 
   const { login, clear, loginStatus, identity, isInitializing } =
     useInternetIdentity();
+  const { t } = useLanguage();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [view, setView] = useState<AppView>({ type: "home" });
 
@@ -711,28 +810,28 @@ function AppInner() {
 
   const navLinks = [
     {
-      label: "Hem",
+      labelKey: "nav_home" as const,
       icon: Home,
       ocid: "nav.home.link",
       view: { type: "home" } as AppView,
       authOnly: false,
     },
     {
-      label: "Skapa inlägg",
+      labelKey: "nav_create" as const,
       icon: PenSquare,
       ocid: "nav.create.link",
       view: { type: "create" } as AppView,
       authOnly: true,
     },
     {
-      label: "Mina inlägg",
+      labelKey: "nav_my_posts" as const,
       icon: BookOpen,
       ocid: "nav.my_posts.link",
       view: { type: "my-posts" } as AppView,
       authOnly: true,
     },
     {
-      label: "Admin",
+      labelKey: "nav_admin" as const,
       icon: Settings,
       ocid: "nav.admin.link",
       view: { type: "admin" } as AppView,
@@ -774,7 +873,7 @@ function AppInner() {
                 }`}
               >
                 <link.icon className="w-4 h-4" />
-                {link.label}
+                {t(link.labelKey)}
               </button>
             ))}
           </nav>
@@ -786,6 +885,11 @@ function AppInner() {
 
           {/* Right side */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* Language switcher */}
+            <div className="hidden sm:block">
+              <LanguageSwitcher />
+            </div>
+
             {isLoggedIn && <NotificationBell onNavigate={navigate} />}
 
             {isLoggedIn && principal ? (
@@ -802,7 +906,7 @@ function AppInner() {
                   className="hidden sm:flex items-center gap-1.5 text-sm"
                 >
                   <LogOut className="w-4 h-4" />
-                  Logga ut
+                  {t("nav_logout")}
                 </Button>
               </div>
             ) : (
@@ -813,7 +917,7 @@ function AppInner() {
                 disabled={isLoggingIn || isInitializing}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                {isLoggingIn ? "Loggar in…" : "Logga in"}
+                {isLoggingIn ? t("nav_logging_in") : t("nav_login")}
               </Button>
             )}
 
@@ -822,7 +926,7 @@ function AppInner() {
               data-ocid="nav.mobile_menu.toggle"
               className="lg:hidden p-2 rounded-lg hover:bg-accent/50 transition-colors"
               onClick={() => setMobileOpen((o) => !o)}
-              aria-label="Meny"
+              aria-label={t("nav_menu")}
             >
               {mobileOpen ? (
                 <X className="w-5 h-5" />
@@ -848,6 +952,10 @@ function AppInner() {
                 <div className="py-2">
                   <GlobalSearch onNavigate={navigate} />
                 </div>
+                {/* Language switcher mobile */}
+                <div className="py-2 px-1">
+                  <LanguageSwitcher />
+                </div>
                 {visibleLinks.map((link) => (
                   <button
                     type="button"
@@ -857,13 +965,13 @@ function AppInner() {
                     onClick={() => navigate(link.view)}
                   >
                     <link.icon className="w-4 h-4" />
-                    {link.label}
+                    {t(link.labelKey)}
                   </button>
                 ))}
                 {isLoggedIn && principal && (
                   <div className="px-3 py-2 border-t border-border mt-1">
                     <p className="text-xs font-body text-muted-foreground mb-1">
-                      Inloggad som
+                      {t("nav_logged_in_as")}
                     </p>
                     <p className="font-mono text-xs text-foreground/70 break-all">
                       {principal}
@@ -881,7 +989,7 @@ function AppInner() {
                     }}
                   >
                     <LogOut className="w-4 h-4" />
-                    Logga ut
+                    {t("nav_logout")}
                   </button>
                 )}
               </div>
@@ -906,41 +1014,27 @@ function AppInner() {
             <MyPosts onNavigate={navigate} />
           </main>
         )}
+        {view.type === "admin" && (
+          <main
+            key="admin"
+            className="flex-1 max-w-6xl mx-auto w-full px-4 py-8"
+          >
+            <AdminPanel onNavigate={navigate} />
+          </main>
+        )}
         {view.type === "post" && (
           <main key={`post-${String(view.postId)}`} className="flex-1">
             <PostView postId={view.postId} onNavigate={navigate} />
           </main>
         )}
-        {view.type === "admin" && (
-          <main key="admin" className="flex-1">
-            <AdminPanel onNavigate={navigate} />
-          </main>
-        )}
         {view.type === "profile" && (
-          <main key={`profile-${view.principalId}`} className="flex-1">
-            <UserProfile principalId={view.principalId} onNavigate={navigate} />
-          </main>
+          <UserProfile
+            key={`profile-${view.principalId}`}
+            principalId={view.principalId}
+            onNavigate={navigate}
+          />
         )}
       </AnimatePresence>
-
-      {/* Footer */}
-      <footer className="border-t border-border bg-card mt-auto">
-        <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="hklo-logo text-xl">HKLO</span>
-          <p className="font-body text-sm text-muted-foreground text-center">
-            © {new Date().getFullYear()}. Byggd med{" "}
-            <span aria-label="kärlek">❤️</span> med{" "}
-            <a
-              href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-foreground transition-colors"
-            >
-              caffeine.ai
-            </a>
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }

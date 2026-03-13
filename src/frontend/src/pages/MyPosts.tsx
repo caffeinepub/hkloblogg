@@ -43,6 +43,7 @@ import {
   usePostsByAuthor,
   usePublishPost,
 } from "../hooks/useQueries";
+import { useLanguage } from "../i18n/LanguageContext";
 import type { NavigateFn } from "../types";
 
 function formatDate(ts: bigint): string {
@@ -75,13 +76,14 @@ function PostCard({
   onEdit,
   onView,
 }: PostCardProps) {
+  const { t } = useLanguage();
   const deletePost = useDeletePost();
   const publishPost = usePublishPost();
 
   const handleDelete = async () => {
     try {
       await deletePost.mutateAsync(post.id);
-      toast.success("Inlägg borttaget");
+      toast.success(`${t("my_posts_delete")} OK`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Fel vid borttagning");
     }
@@ -90,7 +92,7 @@ function PostCard({
   const handlePublish = async () => {
     try {
       await publishPost.mutateAsync(post.id);
-      toast.success("Publicerat!");
+      toast.success(`${t("my_posts_published")}!`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Fel vid publicering");
     }
@@ -121,17 +123,16 @@ function PostCard({
                   : "bg-primary/15 text-primary border-primary/20"
               }`}
             >
-              {isDraft(post) ? "Utkast" : "Publicerat"}
+              {isDraft(post) ? t("my_posts_draft") : t("my_posts_published")}
             </Badge>
           </div>
         </CardHeader>
         <CardContent>
           <p className="text-xs font-body text-muted-foreground mb-3">
-            Skapad {formatDate(post.createdAt)} · Uppdaterad{" "}
-            {formatDate(post.updatedAt)}
+            {t("my_posts_created")} {formatDate(post.createdAt)} ·{" "}
+            {t("my_posts_updated")} {formatDate(post.updatedAt)}
           </p>
 
-          {/* Stats row */}
           <div className="flex items-center gap-4 mb-4">
             <span className="flex items-center gap-1 text-xs font-body text-muted-foreground">
               <Eye className="w-3.5 h-3.5" />
@@ -147,7 +148,7 @@ function PostCard({
             </span>
             <span className="flex items-center gap-1 text-xs font-body text-muted-foreground">
               <Users className="w-3.5 h-3.5" />
-              {followerCount} följare
+              {followerCount} {t("my_posts_followers")}
             </span>
           </div>
 
@@ -160,7 +161,7 @@ function PostCard({
               className="font-body text-xs"
             >
               <Edit className="w-3.5 h-3.5 mr-1" />
-              Redigera
+              {t("my_posts_edit")}
             </Button>
 
             {isDraft(post) && (
@@ -176,7 +177,7 @@ function PostCard({
                 ) : (
                   <Send className="w-3.5 h-3.5 mr-1" />
                 )}
-                Publicera
+                {t("my_posts_publish")}
               </Button>
             )}
 
@@ -189,17 +190,16 @@ function PostCard({
                   className="text-destructive hover:bg-destructive/10 font-body text-xs"
                 >
                   <Trash2 className="w-3.5 h-3.5 mr-1" />
-                  Ta bort
+                  {t("my_posts_delete")}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent data-ocid="posts.dialog">
                 <AlertDialogHeader>
                   <AlertDialogTitle className="font-display">
-                    Ta bort inlägg?
+                    {t("my_posts_delete_title")}
                   </AlertDialogTitle>
                   <AlertDialogDescription className="font-body">
-                    Det här inlägget tas bort permanent och kan inte
-                    återställas.
+                    {t("my_posts_delete_desc")}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -207,7 +207,7 @@ function PostCard({
                     data-ocid="posts.cancel_button"
                     className="font-body"
                   >
-                    Avbryt
+                    {t("my_posts_cancel")}
                   </AlertDialogCancel>
                   <AlertDialogAction
                     data-ocid="posts.confirm_button"
@@ -218,7 +218,7 @@ function PostCard({
                     {deletePost.isPending ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : null}
-                    Ta bort
+                    {t("my_posts_delete")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -235,6 +235,7 @@ interface MyPostsProps {
 }
 
 export default function MyPosts({ onNavigate }: MyPostsProps) {
+  const { t } = useLanguage();
   const { data: posts = [], isLoading } = usePostsByAuthor();
   const { data: categories = [] } = useCategories();
 
@@ -244,7 +245,6 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
   const postIds = useMemo(() => posts.map((p) => p.id), [posts]);
   const { data: commentsMap = {} } = useCommentsForPosts(postIds, true);
 
-  // Collect unique author principals to fetch follower counts
   const authorPrincipals = useMemo(() => {
     const seen = new Set<string>();
     const result: Array<{
@@ -261,11 +261,9 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
     return result;
   }, [posts]);
 
-  // We only have one author (own posts), so just use the first
   const firstAuthor = authorPrincipals[0]?.principal ?? null;
   const { data: myFollowerCount = BigInt(0) } = useFollowerCount(firstAuthor);
 
-  // Build follower count map (all posts share the same author)
   const followerCountMap = useMemo(() => {
     const map: Record<string, number> = {};
     for (const { key } of authorPrincipals) {
@@ -280,7 +278,6 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
     setFilters((prev) => ({ ...prev, ...patch }));
 
   const filteredAndSortedPosts = useMemo(() => {
-    // First filter
     const hasAccessFilter =
       filters.showPublic || filters.showRestricted || filters.showPrivate;
     const hasAnyFilter =
@@ -291,11 +288,11 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
       hasAccessFilter ||
       filters.dateFrom ||
       filters.dateTo ||
-      filters.minLikes !== "";
+      filters.minLikes !== "" ||
+      filters.language !== "";
 
     let result = filterActive
       ? posts.filter((post) => {
-          // OR logic: include post if ANY active filter matches
           if (aliasFilterActive) {
             const q = filters.aliasQuery.trim().toLowerCase();
             const postComments = commentsMap[post.id.toString()] ?? [];
@@ -344,11 +341,15 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
               return true;
           }
 
+          if (filters.language !== "") {
+            const postLang = (post as any).language ?? "sv";
+            if (postLang === filters.language) return true;
+          }
+
           return false;
         })
       : [...posts];
 
-    // Then sort
     if (filters.sortBy === "mostComments") {
       result = result.sort(
         (a, b) =>
@@ -364,11 +365,10 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
     } else if (filters.sortBy === "mostViews") {
       result = result.sort((a, b) => Number(b.viewCount) - Number(a.viewCount));
     } else {
-      // date (default) -- newest first
       result = result.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
     }
 
-    void hasAnyFilter; // suppress unused warning
+    void hasAnyFilter;
     return result;
   }, [
     posts,
@@ -391,7 +391,7 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
       <div className="flex items-center justify-between mb-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-foreground">
-            Mina inlägg
+            {t("my_posts_title")}
           </h1>
         </div>
         <div className="flex items-center gap-2">
@@ -408,28 +408,29 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
             className="bg-primary text-primary-foreground hover:bg-primary/90 font-body"
           >
             <PenSquare className="w-4 h-4 mr-2" />
-            Skapa nytt
+            {t("my_posts_create")}
           </Button>
         </div>
       </div>
 
-      {/* Stats row */}
       {posts.length > 0 && (
         <p className="font-body text-sm text-muted-foreground mb-6">
           {isFiltered ? (
             <>
-              Visar{" "}
+              {t("my_posts_showing")}{" "}
               <span className="text-foreground font-medium">
                 {filteredAndSortedPosts.length}
               </span>{" "}
-              av{" "}
+              {t("my_posts_of")}{" "}
               <span className="text-foreground font-medium">
                 {posts.length}
               </span>{" "}
-              inlägg
+              {t("my_posts_posts")}
             </>
           ) : (
-            <>{posts.length} inlägg totalt</>
+            <>
+              {posts.length} {t("my_posts_total")}
+            </>
           )}
         </p>
       )}
@@ -458,10 +459,10 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
             <BookOpen className="w-9 h-9 text-primary" />
           </div>
           <h3 className="font-display text-xl font-bold text-foreground mb-2">
-            Inga inlägg än
+            {t("my_posts_none")}
           </h3>
           <p className="font-body text-muted-foreground text-sm mb-6 max-w-xs">
-            Du har inte skrivit något ännu. Börja dela dina tankar!
+            {t("my_posts_none_desc")}
           </p>
           <Button
             data-ocid="posts.secondary_button"
@@ -469,7 +470,7 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
             className="bg-primary text-primary-foreground hover:bg-primary/90 font-body"
           >
             <PenSquare className="w-4 h-4 mr-2" />
-            Skapa ditt första inlägg
+            {t("my_posts_create_first")}
           </Button>
         </motion.div>
       ) : filteredAndSortedPosts.length === 0 ? (
@@ -483,10 +484,10 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
             <SlidersHorizontal className="w-7 h-7 text-muted-foreground" />
           </div>
           <h3 className="font-display text-lg font-bold text-foreground mb-2">
-            Inga inlägg matchar filtret
+            {t("my_posts_no_match")}
           </h3>
           <p className="font-body text-muted-foreground text-sm mb-5 max-w-xs">
-            Prova att ändra eller rensa filtren för att se fler inlägg.
+            {t("my_posts_no_match_desc")}
           </p>
           <Button
             data-ocid="posts.filter.delete_button"
@@ -495,7 +496,7 @@ export default function MyPosts({ onNavigate }: MyPostsProps) {
             onClick={() => setFilters(EMPTY_FILTERS)}
             className="font-body text-sm"
           >
-            Rensa filter
+            {t("my_posts_clear_filters")}
           </Button>
         </motion.div>
       ) : (

@@ -54,6 +54,7 @@ actor {
     galleryImageKeys : [Text];
     reactions : [Reaction];
     viewCount : Nat;
+    language : Text;
   };
 
   // Fas 6: Comment type
@@ -132,6 +133,7 @@ actor {
   stable var stableBlockedUsers : [(Principal, Bool)] = [];
   stable var stablePostReactions : [(Nat, [Reaction])] = [];
   stable var stablePostViewCounts : [(Nat, Nat)] = [];
+  stable var stablePostLanguages : [(Nat, Text)] = [];
 
   // Runtime Maps (reconstructed from stable backups on upgrade)
   var userProfiles : Map.Map<Principal, UserProfile> = Map.empty<Principal, UserProfile>();
@@ -141,6 +143,7 @@ actor {
   var blockedUsers : Map.Map<Principal, Bool> = Map.empty<Principal, Bool>();
   var postReactions : Map.Map<Nat, [Reaction]> = Map.empty<Nat, [Reaction]>();
   var postViewCounts : Map.Map<Nat, Nat> = Map.empty<Nat, Nat>();
+  var postLanguages : Map.Map<Nat, Text> = Map.empty<Nat, Text>();
 
   // ── Upgrade hooks ─────────────────────────────────────────────────────────
 
@@ -171,6 +174,10 @@ actor {
     var vc : [(Nat, Nat)] = [];
     for (entry in postViewCounts.entries()) { vc := vc.concat([entry]) };
     stablePostViewCounts := vc;
+
+    var pl : [(Nat, Text)] = [];
+    for (entry in postLanguages.entries()) { pl := pl.concat([entry]) };
+    stablePostLanguages := pl;
   };
 
   system func postupgrade() {
@@ -181,6 +188,7 @@ actor {
     for ((k, v) in stableBlockedUsers.vals()) { blockedUsers.add(k, v) };
     for ((k, v) in stablePostReactions.vals()) { postReactions.add(k, v) };
     for ((k, v) in stablePostViewCounts.vals()) { postViewCounts.add(k, v) };
+    for ((k, v) in stablePostLanguages.vals()) { postLanguages.add(k, v) };
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -212,6 +220,10 @@ actor {
       case (?v) { v };
       case (null) { 0 };
     };
+    let language : Text = switch (postLanguages.get(p.id)) {
+      case (?l) { l };
+      case (null) { "sv" };
+    };
     {
       id = p.id;
       title = p.title;
@@ -226,6 +238,7 @@ actor {
       galleryImageKeys = imgs.galleryImageKeys;
       reactions;
       viewCount;
+      language;
     };
   };
 
@@ -271,12 +284,20 @@ actor {
   };
 
   // Categories
+  // Non-admin users can create categories but access level is forced to Restricted.
+  // Only superadmin can create Public or Private categories.
   public shared ({ caller }) func createCategory(name : Text, description : Text, accessLevel : AccessLevel) : async Nat {
-    if (not AccessControl.isAdmin(accessControlState, caller)) { return 0 };
+    if (caller.isAnonymous()) { return 0 };
+    // Force Restricted for non-admins
+    let effectiveLevel : AccessLevel = if (AccessControl.isAdmin(accessControlState, caller)) {
+      accessLevel
+    } else {
+      #Restricted
+    };
     let id = nextCategoryId;
     nextCategoryId += 1;
     categories := categories.concat([{
-      id; name; description; accessLevel;
+      id; name; description; accessLevel = effectiveLevel;
       readerList = [caller];
       createdBy = caller;
       createdAt = Time.now();
@@ -373,7 +394,7 @@ actor {
   };
 
   // Posts
-  public shared ({ caller }) func createPost(title : Text, content : Text, categoryId : Nat) : async { #ok : Nat; #err : Text } {
+  public shared ({ caller }) func createPost(title : Text, content : Text, categoryId : Nat, language : Text) : async { #ok : Nat; #err : Text } {
     if (blockedUsers.get(caller) != null) {
       return #err("Ditt konto \u{e4}r blockerat. Du kan inte skapa inl\u{e4}gg.");
     };
@@ -402,10 +423,11 @@ actor {
     }]);
     postUpdatedAt.add(id, now);
     postImages.add(id, { coverImageKey = null; galleryImageKeys = [] });
+    postLanguages.add(id, language);
     #ok id;
   };
 
-  public shared ({ caller }) func updatePost(postId : Nat, title : Text, content : Text, categoryId : Nat) : async { #ok : Bool; #err : Text } {
+  public shared ({ caller }) func updatePost(postId : Nat, title : Text, content : Text, categoryId : Nat, language : Text) : async { #ok : Bool; #err : Text } {
     if (blockedUsers.get(caller) != null and not AccessControl.isAdmin(accessControlState, caller)) {
       return #err("Ditt konto \u{e4}r blockerat.");
     };
@@ -428,6 +450,7 @@ actor {
           else { posts[j] };
         });
         postUpdatedAt.add(postId, now);
+        postLanguages.add(postId, language);
         #ok true;
       };
     };
@@ -670,6 +693,10 @@ actor {
 
   public query func isUserBlocked(user : Principal) : async Bool {
     blockedUsers.get(user) != null;
+  };
+
+  public query ({ caller }) func checkIsAdmin() : async Bool {
+    AccessControl.isAdmin(accessControlState, caller);
   };
 
   // Fas 5: Notifications

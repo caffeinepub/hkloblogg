@@ -13,28 +13,31 @@ import {
   useMarkNotificationsRead,
   useUnreadNotifications,
 } from "../hooks/useQueries";
+import { useLanguage } from "../i18n/LanguageContext";
 import type { NavigateFn } from "../types";
 
-function formatRelativeTime(timestamp: bigint): string {
+function formatRelativeTime(timestamp: bigint, t: (k: any) => string): string {
   const ms = Number(timestamp) / 1_000_000;
   const diff = Date.now() - ms;
   const minutes = Math.floor(diff / 60_000);
   const hours = Math.floor(diff / 3_600_000);
   const days = Math.floor(diff / 86_400_000);
-  if (minutes < 1) return "just nu";
-  if (minutes < 60) return `${minutes} min sedan`;
-  if (hours < 24) return `${hours} tim sedan`;
-  return `${days} dag${days !== 1 ? "ar" : ""} sedan`;
+  if (minutes < 1) return t("notif_just_now");
+  if (minutes < 60) return `${minutes} ${t("notif_min_ago")}`;
+  if (hours < 24) return `${hours} ${t("notif_h_ago")}`;
+  return `${days} ${days !== 1 ? t("notif_days_ago") : t("notif_day_ago")}`;
 }
 
 function NotificationItem({
   notif,
   onNavigate,
   onClose,
+  t,
 }: {
   notif: Notification;
   onNavigate: NavigateFn;
   onClose: () => void;
+  t: (k: any) => string;
 }) {
   const isFollow = notif.notifType === "follow";
 
@@ -75,7 +78,7 @@ function NotificationItem({
           {notif.message}
         </p>
         <p className="text-xs text-muted-foreground font-body mt-0.5">
-          {formatRelativeTime(notif.timestamp)}
+          {formatRelativeTime(notif.timestamp, t)}
         </p>
       </div>
       {!notif.read && (
@@ -90,6 +93,7 @@ export default function NotificationBell({
 }: {
   onNavigate: NavigateFn;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const { data: unread = [] } = useUnreadNotifications();
   const { data: allNotifs = [] } = useAllNotifications();
@@ -97,13 +101,11 @@ export default function NotificationBell({
 
   const unreadCount = unread.length;
 
-  // Stable reference to markRead.mutate to avoid infinite loop in useEffect
   const markReadMutate = markRead.mutate;
   const handleMarkRead = useCallback(() => {
     markReadMutate();
   }, [markReadMutate]);
 
-  // Mark all as read when popover opens
   useEffect(() => {
     if (open && unreadCount > 0) {
       handleMarkRead();
@@ -125,7 +127,7 @@ export default function NotificationBell({
           type="button"
           data-ocid="nav.notifications.button"
           className="relative p-2 rounded-lg hover:bg-accent/50 transition-colors"
-          aria-label="Notifikationer"
+          aria-label={t("notif_title")}
         >
           <Bell className="w-5 h-5 text-foreground/70" />
           {unreadCount > 0 && (
@@ -141,10 +143,9 @@ export default function NotificationBell({
         sideOffset={8}
         className="w-80 p-0 overflow-hidden"
       >
-        {/* Header */}
         <div className="px-4 py-3 border-b border-border flex items-center justify-between">
           <h3 className="font-display font-bold text-sm text-foreground">
-            Notifikationer
+            {t("notif_title")}
           </h3>
           {unreadCount > 0 && (
             <Button
@@ -154,12 +155,11 @@ export default function NotificationBell({
               className="text-xs h-7 text-muted-foreground hover:text-foreground"
               onClick={handleMarkRead}
             >
-              Markera alla som l\u00e4sta
+              {t("notif_mark_read")}
             </Button>
           )}
         </div>
 
-        {/* List */}
         <ScrollArea className="max-h-[360px]">
           {sorted.length === 0 ? (
             <div
@@ -168,7 +168,7 @@ export default function NotificationBell({
             >
               <Bell className="w-8 h-8 text-muted-foreground/40 mb-2" />
               <p className="text-sm font-body text-muted-foreground">
-                Inga notifikationer \u00e4nnu
+                {t("notif_none")}
               </p>
             </div>
           ) : (
@@ -179,6 +179,7 @@ export default function NotificationBell({
                   notif={notif}
                   onNavigate={onNavigate}
                   onClose={() => setOpen(false)}
+                  t={t}
                 />
               ))}
             </div>

@@ -11,6 +11,7 @@ import type { Comment } from "../backend.d";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import { useAddComment, useComments } from "../hooks/useQueries";
 import { useStorageClient } from "../hooks/useStorageClient";
+import { useLanguage } from "../i18n/LanguageContext";
 
 function formatDate(ts: bigint): string {
   const ms = Number(ts) / 1_000_000;
@@ -46,6 +47,7 @@ function CommentImage({ hash }: { hash: string }) {
 }
 
 function CommentItem({ comment, index }: { comment: Comment; index: number }) {
+  const { t } = useLanguage();
   const initial = comment.authorAlias
     ? comment.authorAlias[0].toUpperCase()
     : "?";
@@ -62,7 +64,7 @@ function CommentItem({ comment, index }: { comment: Comment; index: number }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className="font-semibold text-sm text-foreground font-body">
-            {comment.authorAlias || "Anonym"}
+            {comment.authorAlias || t("comments_anon")}
           </span>
           <span className="text-xs text-muted-foreground">
             {formatDate(comment.createdAt)}
@@ -89,6 +91,7 @@ interface CommentsSectionProps {
 
 export default function CommentsSection({ postId }: CommentsSectionProps) {
   const { identity } = useInternetIdentity();
+  const { t } = useLanguage();
   const { data: comments = [], isLoading } = useComments(postId);
   const addComment = useAddComment();
   const { uploadImage, isReady: storageReady } = useStorageClient();
@@ -102,7 +105,6 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Close emoji picker on outside click
   useEffect(() => {
     if (!showEmoji) return;
     function handleClick(e: MouseEvent) {
@@ -127,7 +129,6 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
     const end = ta.selectionEnd ?? text.length;
     const newText = text.slice(0, start) + data.emoji + text.slice(end);
     setText(newText);
-    // restore cursor after emoji
     requestAnimationFrame(() => {
       ta.selectionStart = start + data.emoji.length;
       ta.selectionEnd = start + data.emoji.length;
@@ -139,7 +140,7 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
   async function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (attachments.length + files.length > 3) {
-      toast.error("Max 3 bilder per kommentar");
+      toast.error(t("comments_max_images"));
       return;
     }
     const newItems = files.map((f) => ({
@@ -160,13 +161,12 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
           ),
         );
       } catch {
-        toast.error("Kunde inte ladda upp bild");
+        toast.error(t("comments_upload_error"));
         setAttachments((prev) =>
           prev.filter((a) => a.previewUrl !== item.previewUrl),
         );
       }
     }
-    // reset input
     if (e.target) e.target.value = "";
   }
 
@@ -177,7 +177,7 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
   async function handleSubmit() {
     if (!text.trim() && attachments.length === 0) return;
     if (attachments.some((a) => a.uploading)) {
-      toast.error("Väntar på att bilder ska laddas upp...");
+      toast.error(t("comments_uploading"));
       return;
     }
     const imageKeys = attachments.map((a) => a.key ?? "").filter(Boolean);
@@ -186,9 +186,7 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
       setText("");
       setAttachments([]);
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Kunde inte skicka kommentar",
-      );
+      toast.error(err instanceof Error ? err.message : t("comments_error"));
     }
   }
 
@@ -198,7 +196,6 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
 
   return (
     <div>
-      {/* Comment list */}
       {isLoading ? (
         <div className="space-y-4" data-ocid="comments.loading_state">
           {[1, 2].map((i) => (
@@ -216,7 +213,7 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
           className="text-center py-8 text-muted-foreground font-body text-sm"
           data-ocid="comments.empty_state"
         >
-          Inga kommentarer ännu. Bli den första att kommentera!
+          {t("comments_none")}
         </div>
       ) : (
         <div data-ocid="comments.list">
@@ -230,10 +227,8 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
         </div>
       )}
 
-      {/* Comment input */}
       {identity ? (
         <div className="mt-4 space-y-3">
-          {/* Attachments preview */}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {attachments.map((a) => (
@@ -266,7 +261,7 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
               ref={textareaRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Skriv en kommentar..."
+              placeholder={t("comments_placeholder")}
               data-ocid="comments.textarea"
               className="font-body text-sm resize-none pr-4 min-h-[80px]"
               onKeyDown={(e) => {
@@ -280,7 +275,6 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 relative">
-              {/* Emoji picker */}
               <div ref={emojiPickerRef} className="relative">
                 <button
                   type="button"
@@ -302,7 +296,6 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
                 )}
               </div>
 
-              {/* Image upload */}
               <input
                 ref={imageInputRef}
                 type="file"
@@ -339,13 +332,13 @@ export default function CommentsSection({ postId }: CommentsSectionProps) {
               {addComment.isPending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
               ) : null}
-              Kommentera
+              {t("comments_submit")}
             </Button>
           </div>
         </div>
       ) : (
         <div className="mt-4 text-center py-4 text-sm text-muted-foreground font-body">
-          Logga in för att kommentera
+          {t("comments_login")}
         </div>
       )}
     </div>

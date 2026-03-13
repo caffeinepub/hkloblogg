@@ -100,6 +100,19 @@ export function useCreateCategory() {
   });
 }
 
+export function useCheckIsAdmin() {
+  const { actor, isFetching } = useActor();
+  return useQuery<boolean>({
+    queryKey: ["checkIsAdmin"],
+    queryFn: async () => {
+      if (!actor) return false;
+      return actor.checkIsAdmin();
+    },
+    enabled: !!actor && !isFetching,
+    staleTime: 60_000,
+  });
+}
+
 export function useUpdateCategory() {
   const { actor } = useActor();
   const qc = useQueryClient();
@@ -193,13 +206,20 @@ export function useCreatePost() {
       title,
       content,
       categoryId,
+      language,
     }: {
       title: string;
       content: string;
       categoryId: bigint;
+      language: string;
     }) => {
       if (!actor) throw new Error("Not connected");
-      const result = await actor.createPost(title, content, categoryId);
+      const result = await actor.createPost(
+        title,
+        content,
+        categoryId,
+        language,
+      );
       if ("err" in result) throw new Error(result.err);
       return result.ok;
     },
@@ -221,14 +241,22 @@ export function useUpdatePost() {
       title,
       content,
       categoryId,
+      language,
     }: {
       postId: bigint;
       title: string;
       content: string;
       categoryId: bigint;
+      language: string;
     }) => {
       if (!actor) throw new Error("Not connected");
-      const result = await actor.updatePost(postId, title, content, categoryId);
+      const result = await actor.updatePost(
+        postId,
+        title,
+        content,
+        categoryId,
+        language,
+      );
       if ("err" in result) throw new Error(result.err);
       return result.ok;
     },

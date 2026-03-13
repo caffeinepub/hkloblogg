@@ -34,6 +34,7 @@ export interface Post {
   galleryImageKeys: string[];
   reactions: Reaction[];
   viewCount: bigint;
+  language: string;
 }
 
 export interface Comment {
@@ -86,8 +87,8 @@ export interface backendInterface {
   getReaderAliases: ActorMethod<[Principal[]], [Principal, string][]>;
   getCategories: ActorMethod<[], Category[]>;
   getCategoryById: ActorMethod<[bigint], [] | [Category]>;
-  createPost: ActorMethod<[string, string, bigint], { ok: bigint } | { err: string }>;
-  updatePost: ActorMethod<[bigint, string, string, bigint], { ok: boolean } | { err: string }>;
+  createPost: ActorMethod<[string, string, bigint, string], { ok: bigint } | { err: string }>;
+  updatePost: ActorMethod<[bigint, string, string, bigint, string], { ok: boolean } | { err: string }>;
   updatePostImages: ActorMethod<[bigint, [] | [string], string[]], boolean>;
   deletePost: ActorMethod<[bigint], boolean>;
   publishPost: ActorMethod<[bigint], boolean>;
@@ -109,6 +110,7 @@ export interface backendInterface {
   unblockUser: ActorMethod<[Principal], boolean>;
   getBlockedUsers: ActorMethod<[], Principal[]>;
   isUserBlocked: ActorMethod<[Principal], boolean>;
+  checkIsAdmin: ActorMethod<[], boolean>;
   // Fas 5
   sendNotification: ActorMethod<[Principal, string, string, string], boolean>;
   getUnreadNotifications: ActorMethod<[], Notification[]>;

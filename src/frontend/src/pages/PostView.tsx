@@ -13,6 +13,7 @@ import {
   usePostById,
 } from "../hooks/useQueries";
 import { useStorageClient } from "../hooks/useStorageClient";
+import { useLanguage } from "../i18n/LanguageContext";
 import type { NavigateFn } from "../types";
 
 function formatDate(ts: bigint): string {
@@ -68,7 +69,6 @@ function AsyncImage({
   return <img src={src} alt={alt} className={className} />;
 }
 
-/** Renders post HTML content via ref to avoid lint/security rule */
 function PostContent({
   html,
   className,
@@ -88,6 +88,7 @@ interface PostViewProps {
 }
 
 export default function PostView({ postId, onNavigate }: PostViewProps) {
+  const { t } = useLanguage();
   const { data: post, isLoading, isError } = usePostById(postId);
   const { data: categories = [] } = useCategories();
   const incrementView = useIncrementPostView();
@@ -102,7 +103,7 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
     post && principal && post.authorPrincipal.toString() === principal;
 
   const category = categories.find((c) => post && c.id === post.categoryId);
-  // Increment view count when post loads (use ref to avoid mutateAsync dependency)
+
   const incrementViewRef = useRef(incrementView.mutateAsync);
   incrementViewRef.current = incrementView.mutateAsync;
   const viewedPostIdRef = useRef<bigint | null>(null);
@@ -113,7 +114,6 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
     }
   }, [post]);
 
-  // Load gallery URLs
   useEffect(() => {
     if (!post || !storageReady || post.galleryImageKeys.length === 0) return;
     Promise.all(post.galleryImageKeys.map((h) => getImageUrl(h)))
@@ -144,7 +144,7 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
       >
         <AlertTriangle className="w-12 h-12 text-destructive mb-4" />
         <h2 className="font-display text-xl font-bold text-foreground mb-2">
-          Inlägget hittades inte
+          {t("post_not_found")}
         </h2>
         <Button
           data-ocid="post.cancel_button"
@@ -152,7 +152,7 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
           onClick={() => onNavigate({ type: "home" })}
           className="font-body mt-4"
         >
-          Tillbaka till startsidan
+          {t("post_back_home")}
         </Button>
       </div>
     );
@@ -165,7 +165,6 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
       transition={{ duration: 0.45 }}
       className="max-w-3xl mx-auto px-4 py-8"
     >
-      {/* Back */}
       <div className="flex items-center justify-between mb-6">
         <Button
           data-ocid="post.cancel_button"
@@ -175,7 +174,7 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
           className="font-body"
         >
           <ChevronLeft className="w-4 h-4 mr-1" />
-          Tillbaka
+          {t("post_back")}
         </Button>
         {isAuthor && (
           <Button
@@ -186,12 +185,11 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
             className="font-body"
           >
             <Edit className="w-4 h-4 mr-1" />
-            Redigera
+            {t("post_edit")}
           </Button>
         )}
       </div>
 
-      {/* Cover */}
       {post.coverImageKey.length > 0 && (
         <div className="rounded-2xl overflow-hidden mb-8 aspect-video bg-muted">
           <AsyncImage
@@ -202,7 +200,6 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
         </div>
       )}
 
-      {/* Meta */}
       <header className="mb-8">
         {category && (
           <Badge
@@ -226,17 +223,15 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
         </div>
       </header>
 
-      {/* Post body */}
       <PostContent
         html={post.content}
         className="prose prose-stone max-w-none font-body text-foreground mb-10"
       />
 
-      {/* Gallery */}
       {galleryUrls.length > 0 && (
         <section className="mt-10">
           <h2 className="font-display text-lg font-bold text-foreground mb-4">
-            Bildgalleri
+            {t("post_gallery")}
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {galleryUrls.map((url, idx) => (
@@ -249,7 +244,7 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
                   type="button"
                   className="block w-full h-full p-0 border-0 bg-transparent"
                   onClick={() => setLightboxSrc(url)}
-                  aria-label={`Öppna bild ${idx + 1}`}
+                  aria-label={`${t("post_gallery")} ${idx + 1}`}
                 >
                   <img
                     src={url}
@@ -264,7 +259,6 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
         </section>
       )}
 
-      {/* Lightbox */}
       <AnimatePresence>
         {lightboxSrc && (
           <motion.div
@@ -291,17 +285,16 @@ export default function PostView({ postId, onNavigate }: PostViewProps) {
             </button>
           </motion.div>
         )}
-        {/* Reactions & Comments */}
         <div className="mt-10 border-t border-border pt-8 space-y-8">
           <section>
             <h2 className="font-display text-lg font-bold text-foreground mb-4">
-              Reaktioner
+              {t("post_reactions")}
             </h2>
             <ReactionBar postId={post.id} />
           </section>
           <section>
             <h2 className="font-display text-lg font-bold text-foreground mb-4">
-              Kommentarer
+              {t("post_comments")}
             </h2>
             <CommentsSection postId={post.id} />
           </section>

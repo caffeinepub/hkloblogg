@@ -19,6 +19,7 @@ import {
   useUnfollowUser,
   useUserProfile,
 } from "../hooks/useQueries";
+import { useLanguage } from "../i18n/LanguageContext";
 import type { NavigateFn } from "../types";
 
 function formatDate(timestamp: bigint): string {
@@ -69,6 +70,7 @@ export default function UserProfile({
   onNavigate: NavigateFn;
 }) {
   const { identity } = useInternetIdentity();
+  const { t } = useLanguage();
   const myPrincipal = identity?.getPrincipal() ?? null;
 
   const targetPrincipal = useMemo(() => {
@@ -107,7 +109,7 @@ export default function UserProfile({
   const displayName =
     profile?.alias ||
     (isOwnProfile ? localStorage.getItem("hklo_alias") : null) ||
-    `${principalId.slice(0, 10)}…`;
+    `${principalId.slice(0, 10)}\u2026`;
 
   const avatarLetter = (profile?.alias || principalId).charAt(0).toUpperCase();
 
@@ -115,9 +117,9 @@ export default function UserProfile({
     if (!targetPrincipal) return;
     try {
       await followMutation.mutateAsync(targetPrincipal);
-      toast.success(`Du följer nu ${displayName}`);
+      toast.success(`${t("profile_follow_success")} ${displayName}`);
     } catch {
-      toast.error("Kunde inte följa användaren");
+      toast.error(t("profile_follow_error"));
     }
   };
 
@@ -125,9 +127,9 @@ export default function UserProfile({
     if (!targetPrincipal) return;
     try {
       await unfollowMutation.mutateAsync(targetPrincipal);
-      toast.success(`Du följer inte längre ${displayName}`);
+      toast.success(`${t("profile_unfollow_success")} ${displayName}`);
     } catch {
-      toast.error("Kunde inte avfölja användaren");
+      toast.error(t("profile_unfollow_error"));
     }
   };
 
@@ -136,9 +138,9 @@ export default function UserProfile({
     if (!trimmed) return;
     try {
       await setAlias.mutateAsync(trimmed);
-      toast.success("Alias sparat!");
+      toast.success(t("profile_save_success"));
     } catch {
-      toast.error("Kunde inte spara alias");
+      toast.error(t("profile_save_error"));
     }
   };
 
@@ -146,7 +148,6 @@ export default function UserProfile({
 
   return (
     <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-10">
-      {/* Back button */}
       <button
         type="button"
         data-ocid="profile.back.button"
@@ -154,10 +155,9 @@ export default function UserProfile({
         className="flex items-center gap-1.5 text-sm font-body text-muted-foreground hover:text-foreground transition-colors mb-8"
       >
         <ArrowLeft className="w-4 h-4" />
-        Tillbaka
+        {t("profile_back")}
       </button>
 
-      {/* Profile header */}
       <motion.section
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -173,38 +173,38 @@ export default function UserProfile({
           </div>
         ) : (
           <div className="flex flex-col sm:flex-row sm:items-start gap-5">
-            {/* Avatar */}
             <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-2xl font-bold font-display text-primary shrink-0">
               {avatarLetter}
             </div>
 
-            {/* Info */}
             <div className="flex-1 min-w-0">
               <h1 className="font-display text-2xl font-bold text-foreground mb-1">
                 {displayName}
               </h1>
               <p className="font-mono text-xs text-muted-foreground mb-3 truncate">
-                {principalId.slice(0, 20)}…{principalId.slice(-5)}
+                {principalId.slice(0, 20)}\u2026{principalId.slice(-5)}
               </p>
 
-              {/* Follow stats */}
               <div className="flex items-center gap-4 text-sm font-body">
                 <span>
                   <strong className="text-foreground">
                     {followers.length}
                   </strong>{" "}
-                  <span className="text-muted-foreground">följare</span>
+                  <span className="text-muted-foreground">
+                    {t("profile_followers")}
+                  </span>
                 </span>
                 <span>
                   <strong className="text-foreground">
                     {following.length}
                   </strong>{" "}
-                  <span className="text-muted-foreground">följer</span>
+                  <span className="text-muted-foreground">
+                    {t("profile_following")}
+                  </span>
                 </span>
               </div>
             </div>
 
-            {/* Follow / Unfollow button */}
             {myPrincipal && !isOwnProfile && (
               <div className="shrink-0">
                 {alreadyFollowing ? (
@@ -217,7 +217,7 @@ export default function UserProfile({
                     className="gap-1.5"
                   >
                     <UserCheck className="w-4 h-4" />
-                    Följer
+                    {t("profile_unfollow")}
                   </Button>
                 ) : (
                   <Button
@@ -228,7 +228,7 @@ export default function UserProfile({
                     className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5"
                   >
                     <UserPlus className="w-4 h-4" />
-                    Följ
+                    {t("profile_follow")}
                   </Button>
                 )}
               </div>
@@ -236,14 +236,13 @@ export default function UserProfile({
           </div>
         )}
 
-        {/* Own profile: editable alias */}
         {isOwnProfile && (
           <div className="mt-5 pt-5 border-t border-border">
             <Label
               htmlFor="profile-alias"
               className="text-xs font-body text-muted-foreground mb-1.5 block"
             >
-              Alias (visas som författarnamn)
+              {t("profile_alias_label")}
             </Label>
             <div className="flex gap-2">
               <Input
@@ -252,7 +251,7 @@ export default function UserProfile({
                 value={aliasInput}
                 onChange={(e) => setAliasInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSaveAlias()}
-                placeholder="Ditt alias"
+                placeholder={t("profile_alias_placeholder")}
                 className="flex-1 text-sm"
               />
               <Button
@@ -262,17 +261,16 @@ export default function UserProfile({
                 disabled={setAlias.isPending}
                 className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                Spara
+                {t("profile_save")}
               </Button>
             </div>
           </div>
         )}
       </motion.section>
 
-      {/* Posts */}
       <section>
         <h2 className="font-display text-lg font-bold text-foreground mb-4">
-          Inlägg ({publishedPosts.length})
+          {t("profile_posts")} ({publishedPosts.length})
         </h2>
         {postsLoading ? (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -285,7 +283,7 @@ export default function UserProfile({
             data-ocid="profile.post.empty_state"
             className="py-12 text-center text-muted-foreground font-body text-sm"
           >
-            Inga publicerade inlägg ännu.
+            {t("profile_no_posts")}
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">

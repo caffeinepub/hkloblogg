@@ -11,11 +11,24 @@ import {
   usePostReactions,
   useRemoveReaction,
 } from "../hooks/useQueries";
+import { useLanguage } from "../i18n/LanguageContext";
 
-const REACTIONS = [
-  { emoji: "❤️", label: "Hjärta", ocid: "reactions.heart_button" },
-  { emoji: "👍", label: "Tumme upp", ocid: "reactions.thumbsup_button" },
-  { emoji: "🎉", label: "Fest", ocid: "reactions.party_button" },
+const REACTION_CONFIGS = [
+  {
+    emoji: "\u2764\ufe0f",
+    labelKey: "reaction_heart" as const,
+    ocid: "reactions.heart_button",
+  },
+  {
+    emoji: "\ud83d\udc4d",
+    labelKey: "reaction_thumbsup" as const,
+    ocid: "reactions.thumbsup_button",
+  },
+  {
+    emoji: "\ud83c\udf89",
+    labelKey: "reaction_party" as const,
+    ocid: "reactions.party_button",
+  },
 ];
 
 interface ReactionBarProps {
@@ -24,6 +37,7 @@ interface ReactionBarProps {
 
 export default function ReactionBar({ postId }: ReactionBarProps) {
   const { identity } = useInternetIdentity();
+  const { t } = useLanguage();
   const myPrincipal = identity?.getPrincipal().toString() ?? null;
   const { data: reactions = [] } = usePostReactions(postId);
   const addReaction = useAddReaction();
@@ -52,7 +66,8 @@ export default function ReactionBar({ postId }: ReactionBarProps) {
   return (
     <TooltipProvider>
       <div className="flex items-center gap-2 flex-wrap">
-        {REACTIONS.map(({ emoji, label, ocid }) => {
+        {REACTION_CONFIGS.map(({ emoji, labelKey, ocid }) => {
+          const label = t(labelKey);
           const count = countFor(emoji);
           const active = hasReacted(emoji);
           const btn = (
@@ -86,7 +101,7 @@ export default function ReactionBar({ postId }: ReactionBarProps) {
               <Tooltip key={emoji}>
                 <TooltipTrigger asChild>{btn}</TooltipTrigger>
                 <TooltipContent side="top">
-                  <p className="text-xs">Logga in för att reagera</p>
+                  <p className="text-xs">{t("reaction_login")}</p>
                 </TooltipContent>
               </Tooltip>
             );

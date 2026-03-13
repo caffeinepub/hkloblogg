@@ -44,7 +44,6 @@ import {
   Save,
   Send,
   Smile,
-  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -55,6 +54,7 @@ import type { AccessLevel, Category } from "../backend.d";
 import { useInternetIdentity } from "../hooks/useInternetIdentity";
 import {
   useCategories,
+  useCheckIsAdmin,
   useCreateCategory,
   useCreatePost,
   usePostById,
@@ -65,6 +65,8 @@ import {
   useUserProfile,
 } from "../hooks/useQueries";
 import { useStorageClient } from "../hooks/useStorageClient";
+import { useLanguage } from "../i18n/LanguageContext";
+import type { TranslationKey } from "../i18n/sv";
 import type { NavigateFn } from "../types";
 
 interface GalleryItem {
@@ -90,11 +92,33 @@ interface PostEditorProps {
 }
 
 const TOOLBAR_BUTTONS = [
-  { cmd: "bold", icon: Bold, label: "Fetstil" },
-  { cmd: "italic", icon: Italic, label: "Kursiv" },
-  { cmd: "formatBlock", value: "h2", icon: Heading2, label: "Rubrik 2" },
-  { cmd: "formatBlock", value: "h3", icon: Heading3, label: "Rubrik 3" },
-  { cmd: "insertUnorderedList", icon: List, label: "Punktlista" },
+  { cmd: "bold", icon: Bold, labelKey: "editor_save_draft" as const },
+  { cmd: "italic", icon: Italic, labelKey: "editor_save_draft" as const },
+  {
+    cmd: "formatBlock",
+    value: "h2",
+    icon: Heading2,
+    labelKey: "editor_save_draft" as const,
+  },
+  {
+    cmd: "formatBlock",
+    value: "h3",
+    icon: Heading3,
+    labelKey: "editor_save_draft" as const,
+  },
+  {
+    cmd: "insertUnorderedList",
+    icon: List,
+    labelKey: "editor_save_draft" as const,
+  },
+];
+
+const TOOLBAR_LABELS = [
+  "Fetstil",
+  "Kursiv",
+  "Rubrik 2",
+  "Rubrik 3",
+  "Punktlista",
 ];
 
 function accessLevelIcon(level: AccessLevel) {
@@ -103,28 +127,37 @@ function accessLevelIcon(level: AccessLevel) {
   return Lock;
 }
 
-function accessLevelBadge(level: AccessLevel) {
+function accessLevelBadge(
+  level: AccessLevel,
+  t: (k: TranslationKey) => string,
+) {
   if ("Public" in level)
     return (
       <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-body">
-        Offentligt
+        {t("cat_public")}
       </Badge>
     );
   if ("Restricted" in level)
     return (
       <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-body">
-        Begränsad
+        {t("cat_restricted")}
       </Badge>
     );
   return (
     <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-xs font-body">
-      Privat
+      {t("cat_private")}
     </Badge>
   );
 }
 
 // ─── Visibility chip ─────────────────────────────────────────────────────────
-function VisibilityChip({ category }: { category: Category | undefined }) {
+function VisibilityChip({
+  category,
+  t,
+}: {
+  category: Category | undefined;
+  t: (k: TranslationKey) => string;
+}) {
   if (!category) return null;
   const level = category.accessLevel;
   const Icon = accessLevelIcon(level);
@@ -132,14 +165,14 @@ function VisibilityChip({ category }: { category: Category | undefined }) {
   let text: string;
   let colorClass: string;
   if ("Public" in level) {
-    text = "Synlig för alla";
+    text = t("editor_visibility_public");
     colorClass = "bg-emerald-50 text-emerald-700 border-emerald-200";
   } else if ("Restricted" in level) {
     const count = category.readerList.length;
-    text = `Synlig för utvalda i ${category.name}${count > 0 ? ` (${count} personer)` : ""}`;
+    text = `${t("editor_visibility_restricted")} ${category.name}${count > 0 ? ` (${count} personer)` : ""}`;
     colorClass = "bg-amber-50 text-amber-700 border-amber-200";
   } else {
-    text = "Endast du och administratörer";
+    text = t("editor_visibility_private");
     colorClass = "bg-rose-50 text-rose-700 border-rose-200";
   }
 
@@ -159,21 +192,25 @@ function CreateCategoryDialog({
   open,
   onClose,
   onCreated,
+  t,
+  isAdmin,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (id: bigint) => void;
+  t: (k: TranslationKey) => string;
+  isAdmin: boolean;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [accessLevel, setAccessLevel] = useState<
     "Public" | "Restricted" | "Private"
-  >("Public");
+  >(isAdmin ? "Public" : "Restricted");
   const createCategory = useCreateCategory();
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      toast.error("Ange ett namn för kategorin");
+      toast.error(`${t("cat_name")} är obligatoriskt`);
       return;
     }
     const level: AccessLevel =
@@ -188,7 +225,7 @@ function CreateCategoryDialog({
         description: description.trim(),
         accessLevel: level,
       });
-      toast.success("Kategori skapad!");
+      toast.success(`${t("cat_create")}!`);
       onCreated(id);
       setName("");
       setDescription("");
@@ -206,12 +243,14 @@ function CreateCategoryDialog({
         className="sm:max-w-md"
       >
         <DialogHeader>
-          <DialogTitle className="font-display">Skapa ny kategori</DialogTitle>
+          <DialogTitle className="font-display">
+            {t("cat_create_dialog_title")}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label htmlFor="cat-name" className="font-body font-semibold">
-              Namn <span className="text-destructive">*</span>
+              {t("cat_name")} <span className="text-destructive">*</span>
             </Label>
             <Input
               id="cat-name"
@@ -224,7 +263,7 @@ function CreateCategoryDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cat-desc" className="font-body font-semibold">
-              Beskrivning
+              {t("cat_description")}
             </Label>
             <Input
               id="cat-desc"
@@ -236,73 +275,92 @@ function CreateCategoryDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label className="font-body font-semibold">Åtkomstnivå</Label>
-            <RadioGroup
-              data-ocid="editor.access_level.select"
-              value={accessLevel}
-              onValueChange={(v) =>
-                setAccessLevel(v as "Public" | "Restricted" | "Private")
-              }
-              className="space-y-2"
-            >
-              <label
-                htmlFor="al-public"
-                className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/40 cursor-pointer transition-colors"
+            <Label className="font-body font-semibold">
+              {t("cat_access_level")}
+            </Label>
+            {isAdmin ? (
+              <RadioGroup
+                data-ocid="editor.access_level.select"
+                value={accessLevel}
+                onValueChange={(v) =>
+                  setAccessLevel(v as "Public" | "Restricted" | "Private")
+                }
+                className="space-y-2"
               >
-                <RadioGroupItem
-                  value="Public"
-                  id="al-public"
-                  className="mt-0.5"
-                />
-                <div>
-                  <div className="flex items-center gap-1.5 font-body font-semibold text-sm">
-                    <Globe className="w-3.5 h-3.5 text-emerald-600" />
-                    Offentligt
+                <label
+                  htmlFor="al-public"
+                  className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/40 cursor-pointer transition-colors"
+                >
+                  <RadioGroupItem
+                    value="Public"
+                    id="al-public"
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5 font-body font-semibold text-sm">
+                      <Globe className="w-3.5 h-3.5 text-emerald-600" />
+                      {t("cat_public")}
+                    </div>
+                    <p className="text-xs text-muted-foreground font-body">
+                      {t("cat_public_desc")}
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground font-body">
-                    Synlig för alla besökare
-                  </p>
-                </div>
-              </label>
-              <label
-                htmlFor="al-restricted"
-                className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/40 cursor-pointer transition-colors"
-              >
-                <RadioGroupItem
-                  value="Restricted"
-                  id="al-restricted"
-                  className="mt-0.5"
-                />
+                </label>
+                <label
+                  htmlFor="al-restricted"
+                  className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/40 cursor-pointer transition-colors"
+                >
+                  <RadioGroupItem
+                    value="Restricted"
+                    id="al-restricted"
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5 font-body font-semibold text-sm">
+                      <Users className="w-3.5 h-3.5 text-amber-600" />
+                      {t("cat_restricted")}
+                    </div>
+                    <p className="text-xs text-muted-foreground font-body">
+                      {t("cat_restricted_desc")}
+                    </p>
+                  </div>
+                </label>
+                <label
+                  htmlFor="al-private"
+                  className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/40 cursor-pointer transition-colors"
+                >
+                  <RadioGroupItem
+                    value="Private"
+                    id="al-private"
+                    className="mt-0.5"
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5 font-body font-semibold text-sm">
+                      <Lock className="w-3.5 h-3.5 text-rose-600" />
+                      {t("cat_private")}
+                    </div>
+                    <p className="text-xs text-muted-foreground font-body">
+                      {t("cat_private_desc")}
+                    </p>
+                  </div>
+                </label>
+              </RadioGroup>
+            ) : (
+              <div className="flex items-start gap-3 p-3 rounded-lg border border-border bg-accent/20">
                 <div>
                   <div className="flex items-center gap-1.5 font-body font-semibold text-sm">
                     <Users className="w-3.5 h-3.5 text-amber-600" />
-                    Begränsad
+                    {t("cat_restricted")}
                   </div>
                   <p className="text-xs text-muted-foreground font-body">
+                    {t("cat_restricted_desc")}
+                  </p>
+                  <p className="text-xs text-muted-foreground font-body mt-1 italic">
                     Synlig för utvalda användare
                   </p>
                 </div>
-              </label>
-              <label
-                htmlFor="al-private"
-                className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent/40 cursor-pointer transition-colors"
-              >
-                <RadioGroupItem
-                  value="Private"
-                  id="al-private"
-                  className="mt-0.5"
-                />
-                <div>
-                  <div className="flex items-center gap-1.5 font-body font-semibold text-sm">
-                    <Lock className="w-3.5 h-3.5 text-rose-600" />
-                    Privat
-                  </div>
-                  <p className="text-xs text-muted-foreground font-body">
-                    Bara du och administratörer
-                  </p>
-                </div>
-              </label>
-            </RadioGroup>
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter className="gap-2">
@@ -312,7 +370,7 @@ function CreateCategoryDialog({
             onClick={onClose}
             className="font-body"
           >
-            Avbryt
+            {t("cat_cancel")}
           </Button>
           <Button
             data-ocid="editor.create_category.submit_button"
@@ -323,7 +381,7 @@ function CreateCategoryDialog({
             {createCategory.isPending && (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             )}
-            Skapa kategori
+            {t("cat_create")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -336,10 +394,14 @@ function CategoryCombobox({
   categories,
   value,
   onChange,
+  t,
+  isAdmin,
 }: {
   categories: Category[];
   value: string;
   onChange: (id: string) => void;
+  t: (k: TranslationKey) => string;
+  isAdmin: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -359,7 +421,7 @@ function CategoryCombobox({
             <span className="flex items-center gap-2 min-w-0">
               <Icon className="w-4 h-4 text-muted-foreground shrink-0" />
               <span className="truncate">
-                {selected ? selected.name : "Välj kategori…"}
+                {selected ? selected.name : t("editor_choose_category")}
               </span>
             </span>
             <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -395,7 +457,7 @@ function CategoryCombobox({
                           <span className="font-body font-semibold text-sm">
                             {cat.name}
                           </span>
-                          {accessLevelBadge(cat.accessLevel)}
+                          {accessLevelBadge(cat.accessLevel, t)}
                         </div>
                         {cat.description && (
                           <p className="text-xs text-muted-foreground font-body mt-0.5 truncate">
@@ -421,7 +483,7 @@ function CategoryCombobox({
                   className="flex items-center gap-2 px-3 py-2.5 cursor-pointer text-primary font-body font-semibold"
                 >
                   <Plus className="w-4 h-4" />
-                  Skapa ny kategori
+                  {t("editor_create_category")}
                 </CommandItem>
               </CommandGroup>
             </CommandList>
@@ -433,6 +495,8 @@ function CategoryCombobox({
         open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         onCreated={(id) => onChange(String(id))}
+        t={t}
+        isAdmin={isAdmin}
       />
     </>
   );
@@ -440,6 +504,7 @@ function CategoryCombobox({
 
 // ─── Main PostEditor ──────────────────────────────────────────────────────────
 export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
+  const { t, lang } = useLanguage();
   const isEditing = postId !== undefined;
   const { identity } = useInternetIdentity();
   const principalId = identity?.getPrincipal() ?? null;
@@ -448,6 +513,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
     userProfile?.alias || localStorage.getItem("hklo_alias") || "";
   const setAlias = useSetAlias();
   const [authorName, setAuthorName] = useState(authorAlias);
+  const [postLanguage, setPostLanguage] = useState<"sv" | "en">(lang);
   const { data: existingPost, isLoading: postLoading } = usePostById(
     postId ?? null,
   );
@@ -458,6 +524,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
     isReady: storageReady,
   } = useStorageClient();
 
+  const { data: isAdmin = false } = useCheckIsAdmin();
   const createPost = useCreatePost();
   const updatePost = useUpdatePost();
   const updatePostImages = useUpdatePostImages();
@@ -491,6 +558,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showEditorEmoji]);
+
   // Sync authorName when userProfile loads
   useEffect(() => {
     if (authorAlias && !authorName) setAuthorName(authorAlias);
@@ -509,6 +577,11 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
     if (!isEditing || !existingPost || initialized) return;
     setTitle(existingPost.title);
     setCategoryId(String(existingPost.categoryId));
+    // Set language from existing post if available
+    const existingLang = (existingPost as any).language;
+    if (existingLang === "sv" || existingLang === "en") {
+      setPostLanguage(existingLang);
+    }
     if (editorRef.current) {
       editorRef.current.innerHTML = existingPost.content;
     }
@@ -618,15 +691,15 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
 
   const validate = () => {
     if (!title.trim()) {
-      toast.error("Ange en titel");
+      toast.error(`${t("editor_title")} är obligatoriskt`);
       return false;
     }
     if (!categoryId) {
-      toast.error("Välj en kategori");
+      toast.error(`${t("editor_category")} måste väljas`);
       return false;
     }
     if (!getContent().trim()) {
-      toast.error("Innehållet får inte vara tomt");
+      toast.error(`${t("editor_content")} får inte vara tomt`);
       return false;
     }
     return true;
@@ -642,6 +715,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
           title,
           content,
           categoryId: BigInt(categoryId),
+          language: postLanguage,
         });
         const { coverKey, galleryKeys } = await uploadPendingImages();
         await updatePostImages.mutateAsync({
@@ -652,12 +726,13 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
         if (authorName.trim() && authorName.trim() !== authorAlias) {
           await setAlias.mutateAsync(authorName.trim());
         }
-        toast.success("Utkast sparat!");
+        toast.success(`${t("editor_save_draft")}!`);
       } else {
         const newId = await createPost.mutateAsync({
           title,
           content,
           categoryId: BigInt(categoryId),
+          language: postLanguage,
         });
         const { coverKey, galleryKeys } = await uploadPendingImages();
         await updatePostImages.mutateAsync({
@@ -668,7 +743,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
         if (authorName.trim() && authorName.trim() !== authorAlias) {
           await setAlias.mutateAsync(authorName.trim());
         }
-        toast.success("Utkast sparat!");
+        toast.success(`${t("editor_save_draft")}!`);
         onNavigate({ type: "edit", postId: newId });
       }
     } catch (err: unknown) {
@@ -687,6 +762,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
           title,
           content,
           categoryId: BigInt(categoryId),
+          language: postLanguage,
         });
         const { coverKey, galleryKeys } = await uploadPendingImages();
         await updatePostImages.mutateAsync({
@@ -699,6 +775,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
           title,
           content,
           categoryId: BigInt(categoryId),
+          language: postLanguage,
         });
         const { coverKey, galleryKeys } = await uploadPendingImages();
         await updatePostImages.mutateAsync({
@@ -717,7 +794,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
       if (authorName.trim() && authorName.trim() !== authorAlias) {
         await setAlias.mutateAsync(authorName.trim());
       }
-      toast.success("Publicerat!");
+      toast.success(`${t("editor_publish")}!`);
       onNavigate({ type: "my-posts" });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Något gick fel");
@@ -762,10 +839,10 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
           className="font-body"
         >
           <ChevronLeft className="w-4 h-4 mr-1" />
-          Tillbaka
+          {t("editor_back")}
         </Button>
         <h1 className="font-display text-2xl font-bold text-foreground">
-          {isEditing ? "Redigera inlägg" : "Nytt inlägg"}
+          {isEditing ? t("editor_edit_post") : t("editor_new_post")}
         </h1>
       </div>
 
@@ -773,38 +850,42 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
         {/* Title */}
         <div className="space-y-2">
           <Label htmlFor="post-title" className="font-body font-semibold">
-            Titel
+            {t("editor_title")}
           </Label>
           <Input
             id="post-title"
             data-ocid="editor.input"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Ge ditt inlägg en rubrik…"
+            placeholder={t("editor_title_placeholder")}
             className="text-lg font-display font-semibold bg-card h-12"
           />
         </div>
 
         {/* Author name field */}
         <div className="space-y-2">
-          <Label className="font-body font-semibold">Författarnamn</Label>
+          <Label className="font-body font-semibold">
+            {t("editor_author")}
+          </Label>
           <Input
             data-ocid="post.author_name.input"
             value={authorName}
             onChange={(e) => setAuthorName(e.target.value)}
-            placeholder="Ditt namn eller alias..."
+            placeholder={t("editor_author_placeholder")}
             className="font-body h-10 bg-card"
           />
           {!authorAlias && authorName.trim() && (
             <p className="text-xs text-muted-foreground font-body">
-              Namnet sparas i din profil när du publicerar.
+              {t("editor_author_save_note")}
             </p>
           )}
         </div>
 
         {/* Category */}
         <div className="space-y-2">
-          <Label className="font-body font-semibold">Kategori</Label>
+          <Label className="font-body font-semibold">
+            {t("editor_category")}
+          </Label>
           {catLoading ? (
             <Skeleton className="h-10 w-72" />
           ) : (
@@ -812,27 +893,64 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
               categories={categories}
               value={categoryId}
               onChange={setCategoryId}
+              t={t}
+              isAdmin={isAdmin}
             />
           )}
-          {selectedCategory && <VisibilityChip category={selectedCategory} />}
+          {selectedCategory && (
+            <VisibilityChip category={selectedCategory} t={t} />
+          )}
+        </div>
+
+        {/* Post language selector */}
+        <div className="space-y-2">
+          <Label className="font-body font-semibold">
+            {t("editor_lang_label")}
+          </Label>
+          <div className="flex gap-2" data-ocid="editor.toggle">
+            <button
+              type="button"
+              onClick={() => setPostLanguage("sv")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-body font-semibold transition-colors ${
+                postLanguage === "sv"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border bg-card text-muted-foreground hover:bg-accent/40"
+              }`}
+            >
+              <span>🇸🇪</span> {t("editor_lang_sv")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPostLanguage("en")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-body font-semibold transition-colors ${
+                postLanguage === "en"
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "border-border bg-card text-muted-foreground hover:bg-accent/40"
+              }`}
+            >
+              <span>🇬🇧</span> {t("editor_lang_en")}
+            </button>
+          </div>
         </div>
 
         {/* Rich Text Editor */}
         <div className="space-y-2">
-          <Label className="font-body font-semibold">Innehåll</Label>
+          <Label className="font-body font-semibold">
+            {t("editor_content")}
+          </Label>
           <div className="border border-border rounded-xl overflow-hidden bg-card">
             <div className="flex items-center gap-1 p-2 border-b border-border bg-muted/50">
-              {TOOLBAR_BUTTONS.map((btn) => (
+              {TOOLBAR_BUTTONS.map((btn, idx) => (
                 <button
                   key={btn.cmd + (btn.value ?? "")}
                   type="button"
-                  title={btn.label}
+                  title={TOOLBAR_LABELS[idx]}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     execCmd(btn.cmd, btn.value);
                   }}
                   className="p-2 rounded-lg hover:bg-accent/70 transition-colors text-foreground/70 hover:text-foreground"
-                  aria-label={btn.label}
+                  aria-label={TOOLBAR_LABELS[idx]}
                 >
                   <btn.icon className="w-4 h-4" />
                 </button>
@@ -841,8 +959,8 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
               <div ref={editorEmojiRef} className="relative ml-auto">
                 <button
                   type="button"
-                  title="Lu00e4gg till emoji"
-                  aria-label="Emoji-vu00e4ljare"
+                  title="Lägg till emoji"
+                  aria-label="Emoji-väljare"
                   onMouseDown={(e) => {
                     e.preventDefault();
                     setShowEditorEmoji((v) => !v);
@@ -859,7 +977,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
                         document.execCommand("insertText", false, data.emoji);
                         setShowEditorEmoji(false);
                       }}
-                      searchPlaceholder="Su00f6k emoji..."
+                      searchPlaceholder="Sök emoji..."
                     />
                   </div>
                 )}
@@ -878,7 +996,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
 
         {/* Cover image */}
         <div className="space-y-2">
-          <Label className="font-body font-semibold">Omslagsbild</Label>
+          <Label className="font-body font-semibold">{t("editor_cover")}</Label>
           <input
             ref={coverInputRef}
             type="file"
@@ -919,14 +1037,16 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
               className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-border rounded-xl text-sm font-body text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
             >
               <ImagePlus className="w-4 h-4" />
-              Ladda upp omslagsbild
+              {t("editor_upload_cover")}
             </button>
           )}
         </div>
 
         {/* Gallery */}
         <div className="space-y-2">
-          <Label className="font-body font-semibold">Bildgalleri</Label>
+          <Label className="font-body font-semibold">
+            {t("editor_gallery")}
+          </Label>
           <input
             ref={galleryInputRef}
             type="file"
@@ -982,7 +1102,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
             className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-border rounded-xl text-sm font-body text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors"
           >
             <ImagePlus className="w-4 h-4" />
-            Lägg till bilder i galleriet
+            {t("editor_add_gallery")}
           </button>
         </div>
 
@@ -1000,7 +1120,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
             ) : (
               <Save className="w-4 h-4 mr-2" />
             )}
-            Spara utkast
+            {t("editor_save_draft")}
           </Button>
           <Button
             data-ocid="editor.submit_button"
@@ -1013,7 +1133,7 @@ export default function PostEditor({ postId, onNavigate }: PostEditorProps) {
             ) : (
               <Send className="w-4 h-4 mr-2" />
             )}
-            Publicera
+            {t("editor_publish")}
           </Button>
         </div>
       </div>

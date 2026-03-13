@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sheet";
 import { CalendarDays, Filter, SlidersHorizontal, X } from "lucide-react";
 import type { Category } from "../backend.d";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export type SortBy = "date" | "mostComments" | "mostFollowers" | "mostViews";
 
@@ -33,6 +34,7 @@ export interface PostFilters {
   dateTo: string;
   minLikes: string;
   sortBy: SortBy;
+  language: "" | "sv" | "en";
 }
 
 export const EMPTY_FILTERS: PostFilters = {
@@ -45,6 +47,7 @@ export const EMPTY_FILTERS: PostFilters = {
   dateTo: "",
   minLikes: "",
   sortBy: "date",
+  language: "",
 };
 
 export function countActiveFilters(f: PostFilters): number {
@@ -57,6 +60,7 @@ export function countActiveFilters(f: PostFilters): number {
   if (f.dateFrom || f.dateTo) n++;
   if (f.minLikes !== "") n++;
   if (f.sortBy !== "date") n++;
+  if (f.language !== "") n++;
   return n;
 }
 
@@ -90,6 +94,8 @@ export default function MyPostsFilterPanel({
   categories,
   activeCount,
 }: Props) {
+  const { t } = useLanguage();
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -100,7 +106,7 @@ export default function MyPostsFilterPanel({
           className="relative gap-2 border-border bg-card text-foreground hover:bg-accent/40 font-body text-sm"
         >
           <SlidersHorizontal className="w-4 h-4" />
-          Filter
+          {t("filter_title").split(" ")[0]}
           {activeCount > 0 && (
             <Badge
               data-ocid="posts.filter.toggle"
@@ -121,7 +127,7 @@ export default function MyPostsFilterPanel({
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-primary" />
             <SheetTitle className="font-display text-base font-semibold text-foreground">
-              Filtrera inlägg
+              {t("filter_title")}
             </SheetTitle>
           </div>
         </SheetHeader>
@@ -130,7 +136,7 @@ export default function MyPostsFilterPanel({
           {/* Sortering */}
           <div className="space-y-2">
             <Label className="font-body text-sm font-medium text-foreground">
-              Sortera efter
+              {t("filter_sort")}
             </Label>
             <Select
               value={filters.sortBy}
@@ -143,11 +149,15 @@ export default function MyPostsFilterPanel({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="font-body text-sm">
-                <SelectItem value="date">Senaste datum</SelectItem>
-                <SelectItem value="mostViews">Mest lästa</SelectItem>
-                <SelectItem value="mostComments">Flest kommentarer</SelectItem>
+                <SelectItem value="date">{t("filter_sort_date")}</SelectItem>
+                <SelectItem value="mostViews">
+                  {t("filter_sort_views")}
+                </SelectItem>
+                <SelectItem value="mostComments">
+                  {t("filter_sort_comments")}
+                </SelectItem>
                 <SelectItem value="mostFollowers">
-                  Flest följare (författare)
+                  {t("filter_sort_followers")}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -155,20 +165,20 @@ export default function MyPostsFilterPanel({
 
           <Separator className="bg-border" />
 
-          {/* Alias / kommentarsförfattare */}
+          {/* Alias */}
           <div className="space-y-2">
             <Label className="font-body text-sm font-medium text-foreground">
-              Alias (kommentarsförfattare)
+              {t("filter_alias")}
             </Label>
             <Input
               data-ocid="posts.filter.input"
-              placeholder="Sök på alias…"
+              placeholder={t("filter_alias_placeholder")}
               value={filters.aliasQuery}
               onChange={(e) => onChange({ aliasQuery: e.target.value })}
               className="font-body text-sm bg-background border-border"
             />
             <p className="text-xs text-muted-foreground font-body">
-              Visar inlägg som har kommentarer från detta alias.
+              {t("filter_alias_hint")}
             </p>
           </div>
 
@@ -177,7 +187,7 @@ export default function MyPostsFilterPanel({
           {/* Kategori */}
           <div className="space-y-2">
             <Label className="font-body text-sm font-medium text-foreground">
-              Kategori
+              {t("filter_category")}
             </Label>
             <Select
               value={filters.categoryId || "__all__"}
@@ -189,10 +199,12 @@ export default function MyPostsFilterPanel({
                 data-ocid="posts.filter.select"
                 className="font-body text-sm bg-background border-border"
               >
-                <SelectValue placeholder="Alla kategorier" />
+                <SelectValue placeholder={t("filter_all_categories")} />
               </SelectTrigger>
               <SelectContent className="font-body text-sm">
-                <SelectItem value="__all__">Alla kategorier</SelectItem>
+                <SelectItem value="__all__">
+                  {t("filter_all_categories")}
+                </SelectItem>
                 {categories.map((cat) => (
                   <SelectItem key={String(cat.id)} value={String(cat.id)}>
                     {cat.name}
@@ -207,7 +219,7 @@ export default function MyPostsFilterPanel({
           {/* Åtkomstnivå */}
           <div className="space-y-3">
             <Label className="font-body text-sm font-medium text-foreground">
-              Åtkomstnivå
+              {t("filter_access")}
             </Label>
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
@@ -222,7 +234,7 @@ export default function MyPostsFilterPanel({
                   htmlFor="filter-public"
                   className="font-body text-sm text-foreground cursor-pointer"
                 >
-                  Offentligt
+                  {t("filter_public")}
                 </Label>
               </div>
               <div className="flex items-center gap-2">
@@ -239,7 +251,7 @@ export default function MyPostsFilterPanel({
                   htmlFor="filter-restricted"
                   className="font-body text-sm text-foreground cursor-pointer"
                 >
-                  Begränsad
+                  {t("filter_restricted")}
                 </Label>
               </div>
               <div className="flex items-center gap-2">
@@ -254,7 +266,7 @@ export default function MyPostsFilterPanel({
                   htmlFor="filter-private"
                   className="font-body text-sm text-foreground cursor-pointer"
                 >
-                  Privat
+                  {t("filter_private")}
                 </Label>
               </div>
             </div>
@@ -266,12 +278,12 @@ export default function MyPostsFilterPanel({
           <div className="space-y-3">
             <Label className="font-body text-sm font-medium text-foreground flex items-center gap-1.5">
               <CalendarDays className="w-3.5 h-3.5" />
-              Datum
+              {t("filter_date")}
             </Label>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="font-body text-xs text-muted-foreground">
-                  Från
+                  {t("filter_from")}
                 </Label>
                 <Input
                   data-ocid="posts.filter.input"
@@ -283,7 +295,7 @@ export default function MyPostsFilterPanel({
               </div>
               <div className="space-y-1">
                 <Label className="font-body text-xs text-muted-foreground">
-                  Till
+                  {t("filter_to")}
                 </Label>
                 <Input
                   data-ocid="posts.filter.input"
@@ -297,9 +309,9 @@ export default function MyPostsFilterPanel({
             <div className="flex flex-wrap gap-1.5">
               {(
                 [
-                  ["week", "Senaste veckan"],
-                  ["month", "Senaste månaden"],
-                  ["3months", "Senaste 3 månaderna"],
+                  ["week", t("filter_last_week")],
+                  ["month", t("filter_last_month")],
+                  ["3months", t("filter_last_3months")],
                 ] as const
               ).map(([period, label]) => (
                 <button
@@ -320,17 +332,46 @@ export default function MyPostsFilterPanel({
           {/* Antal gilla */}
           <div className="space-y-2">
             <Label className="font-body text-sm font-medium text-foreground">
-              Minsta antal gillningar
+              {t("filter_min_likes")}
             </Label>
             <Input
               data-ocid="posts.filter.input"
               type="number"
               min="0"
-              placeholder="t.ex. 1"
+              placeholder={t("filter_likes_placeholder")}
               value={filters.minLikes}
               onChange={(e) => onChange({ minLikes: e.target.value })}
               className="font-body text-sm bg-background border-border"
             />
+          </div>
+
+          <Separator className="bg-border" />
+
+          {/* Språk */}
+          <div className="space-y-2">
+            <Label className="font-body text-sm font-medium text-foreground">
+              {t("filter_language")}
+            </Label>
+            <Select
+              value={filters.language || "__all__"}
+              onValueChange={(v) =>
+                onChange({
+                  language: v === "__all__" ? "" : (v as "sv" | "en"),
+                })
+              }
+            >
+              <SelectTrigger
+                data-ocid="posts.filter.select"
+                className="font-body text-sm bg-background border-border"
+              >
+                <SelectValue placeholder={t("filter_lang_all")} />
+              </SelectTrigger>
+              <SelectContent className="font-body text-sm">
+                <SelectItem value="__all__">{t("filter_lang_all")}</SelectItem>
+                <SelectItem value="sv">{t("filter_lang_sv")}</SelectItem>
+                <SelectItem value="en">{t("filter_lang_en")}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -344,10 +385,10 @@ export default function MyPostsFilterPanel({
             disabled={activeCount === 0}
           >
             <X className="w-4 h-4" />
-            Rensa filter
+            {t("filter_clear")}
             {activeCount > 0 && (
               <Badge variant="secondary" className="ml-auto text-xs">
-                {activeCount} aktiva
+                {activeCount} {t("filter_active")}
               </Badge>
             )}
           </Button>
